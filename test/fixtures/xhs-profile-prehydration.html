@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>寻美象山 - 小红书</title>
+</head>
+<!--
+  NOT hand-invented: this mirrors a REAL anonymous capture of
+  https://www.xiaohongshu.com/user/profile/6308604100000000120013e8
+  (curl, 2026-10-10, 249 KB, no login wall). Two facts from that capture drove
+  this fixture, and both are load-bearing:
+
+    1. The card links carry NO note id. XHS serves
+         /user/profile/<uid>/?xsec_token=<token>&xsec_source=pc_user
+       and a bare "/explore/" for the cover; navigation is done in JS. This is
+       why the scraper finds cards but zero note links on a page like this.
+
+    2. __INITIAL_STATE__ ships noteCard.noteId as an EMPTY STRING for every card
+       while time / xsecToken / displayTitle are fully populated. The ids only
+       appear once the client has hydrated.
+
+  So this fixture pins the "page has not finished loading" behaviour: it must
+  warn clearly, not return a silent empty CSV.
+
+  The `time` and `displayTitle` below are the real values, and they are exactly
+  PLAN.md's XHS row 1 (time 1790758357000 == 2026-09-30 16:52:37+08, which is
+  also what note id 6abccdd5… decodes to).
+-->
+<body>
+<script>
+  window.__INITIAL_STATE__ = {
+    user: {
+      userPageData: {
+        basicInfo: { nickname: '寻美象山', redId: '630860410' },
+        activeTab: { key: 0, index: 0, query: 'note', label: '笔记', lock: false, subTabs: null, feedType: 0 },
+        notes: [
+          [{
+            id: '',
+            noteCard: {
+              user: { nickName: '寻美象山', userId: '6308604100000000120013e8', nickname: '寻美象山' },
+              cover: { width: 1921, url: '', traceId: '', infoList: [] },
+              time: 1790758357000,
+              type: 'video',
+              noteId: '',
+              xsecToken: 'ABhu_Cqz8_LewlXka4tu0shVpYDT7o_tpVNbSL0xosDCo=',
+              displayTitle: '近日，受台风"白海豚"影响，象山县新联会会员、茅洋乡新联会会长史英子的象山里火龙'
+            },
+            index: 0,
+            exposed: false,
+            ssrRendered: true,
+            xsecToken: 'ABhu_Cqz8_LewlXka4tu0shVpYDT7o_tpVNbSL0xosDCo='
+          }],
+          [{
+            id: '',
+            noteCard: {
+              user: { nickName: '寻美象山', userId: '6308604100000000120013e8', nickname: '寻美象山' },
+              cover: { width: 1440, url: '', traceId: '', infoList: [] },
+              time: 1790662796000,
+              type: 'normal',
+              noteId: '',
+              xsecToken: 'ABncDfNU27MaDlTJyzr0Q2Bi-lmBfRn9QC-FZv7tW0-eo=',
+              displayTitle: '寻美象山 寻美宁波 寻美浙江'
+            },
+            index: 1,
+            exposed: false,
+            ssrRendered: true,
+            xsecToken: 'ABncDfNU27MaDlTJyzr0Q2Bi-lmBfRn9QC-FZv7tW0-eo='
+          }]
+        ]
+      }
+    }
+  };
+</script>
+<div class="feeds-page">
+  <div class="feeds-container">
+
+    <section class="note-item">
+      <a href="/explore/"><img class="cover-img" src="cover1.jpg" alt=""></a>
+      <a class="cover mask" href="/user/profile/6308604100000000120013e8/?xsec_token=ABhu_Cqz8_LewlXka4tu0shVpYDT7o_tpVNbSL0xosDCo=&amp;xsec_source=pc_user">
+        <img class="cover-img" src="cover1.jpg" alt="象山火龙果庄园">
+      </a>
+      <div class="footer">
+        <a class="title" href="/user/profile/6308604100000000120013e8/?xsec_token=ABhu_Cqz8_LewlXka4tu0shVpYDT7o_tpVNbSL0xosDCo=&amp;xsec_source=pc_user">
+          <span>近日，受台风"白海豚"影响，象山县新联会会员、茅洋乡新联会会长史英子的象山里火龙</span>
+        </a>
+        <div class="author-wrapper">
+          <a class="active router-link-exact-active author" href="/user/profile/6308604100000000120013e8?channel_type=web_user_page&amp;parent_page_channel_type=web_user_board&amp;xsec_token=&amp;xsec_source=pc_note">
+            <img class="author-avatar" src="avatar.jpg" alt="寻美象山">
+          </a>
+        </div>
+      </div>
+    </section>
+
+    <section class="note-item">
+      <a href="/explore/"><img class="cover-img" src="cover2.jpg" alt=""></a>
+      <a class="cover mask" href="/user/profile/6308604100000000120013e8/?xsec_token=ABncDfNU27MaDlTJyzr0Q2Bi-lmBfRn9QC-FZv7tW0-eo=&amp;xsec_source=pc_user">
+        <img class="cover-img" src="cover2.jpg" alt="寻美象山">
+      </a>
+      <div class="footer">
+        <a class="title" href="/user/profile/6308604100000000120013e8/?xsec_token=ABncDfNU27MaDlTJyzr0Q2Bi-lmBfRn9QC-FZv7tW0-eo=&amp;xsec_source=pc_user">
+          <span>寻美象山 寻美宁波 寻美浙江</span>
+        </a>
+      </div>
+    </section>
+
+  </div>
+</div>
+</body>
+</html>

@@ -1,0 +1,17 @@
+{
+  "name": "xhs-weibo-scraper",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Paste-into-DevTools-console scraper for Xiaohongshu/RedNote and Weibo profile pages. The deliverable (scrape.js) has zero dependencies; this package.json exists only to run the dev-machine test suite.",
+  "license": "MIT",
+  "scripts": {
+    "build": "node tools/build-split.js",
+    "build:check": "node tools/build-split.js --check",
+    "test": "node --test test/",
+    "test:browser": "bash test/browser-check.sh",
+    "check:live": "node test/live-check.js"
+  },
+  "devDependencies": {
+    "jsdom": "^30.1.2"
+  }
+}

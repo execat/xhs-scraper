@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>象山发布 - 小红书</title>
+</head>
+<!--
+  Representative xiaohongshu.com user-profile DOM. Hand-written, NOT captured
+  from the live site — xiaohongshu.com redirects to /login from the dev machine,
+  see README.md.
+
+  Deliberate contents:
+    * 6abccdd5000000001800471b  2026-09-30 16:52:37+08  in range
+      -> PLAN.md sample row 1 (note the id encodes its own timestamp)
+    * 6abb588c000000001400032d  2026-09-29 14:19:56+08  in range
+      -> PLAN.md sample row 2
+    * 6a2f40800000000018000001  2026-06-15            OUT of range
+  Each note card carries two anchors (cover + title) pointing at the same note,
+  to exercise de-duplication. The author anchor (/user/profile/<uid>, no
+  xsec_token) must NOT be treated as a note link.
+-->
+<body>
+<script>
+  // xhs injects this on real profile pages. Our scraper treats it as an
+  // optional enrichment source, never a hard dependency.
+  window.__INITIAL_STATE__ = {
+    user: {
+      userPageData: {
+        basicInfo: { nickname: '象山发布', redId: '630860410' },
+        // Real XHS nests each card under `noteCard`, inside an array of arrays
+        // (verified against a live capture). The scraper walks the whole blob
+        // rather than assuming a path, but the fixture should still be truthful.
+        notes: [
+          [{
+            id: '',
+            noteCard: {
+              noteId: '6abccdd5000000001800471b',
+              displayTitle: '近日，受台风"白海豚"影响，象山县新联会会员、茅洋乡新联会会长史英子的象山里火龙果庄园的线下采摘及外销渠道受阻',
+              time: 1790758357,
+              xsecToken: 'ABsN9_jNWzAPdKD4L_jsZRaBrf2ZuwpAU4IpZL7WFYnVw='
+            },
+            index: 0,
+            ssrRendered: true,
+            xsecToken: 'ABsN9_jNWzAPdKD4L_jsZRaBrf2ZuwpAU4IpZL7WFYnVw='
+          }],
+          [{
+            id: '',
+            noteCard: {
+              noteId: '6abb588c000000001400032d',
+              displayTitle: '寻美象山 寻美宁波 寻美浙江',
+              time: 1790662796,
+              xsecToken: 'ABncDfNU27MaDlTJyzr0Q2Bi-lmBfRn9QC-FZv7tW0-eo='
+            },
+            index: 1,
+            ssrRendered: true,
+            xsecToken: 'ABncDfNU27MaDlTJyzr0Q2Bi-lmBfRn9QC-FZv7tW0-eo='
+          }]
+        ]
+      }
+    }
+  };
+</script>
+<div class="feeds-page">
+  <div class="feeds-container">
+
+    <section class="note-item">
+      <a class="cover ld mask" href="/explore/6abccdd5000000001800471b?xsec_token=ABsN9_jNWzAPdKD4L_jsZRaBrf2ZuwpAU4IpZL7WFYnVw=&amp;xsec_source=pc_user">
+        <img class="cover-img" src="cover1.jpg" alt="象山火龙果庄园">
+      </a>
+      <div class="footer">
+        <a class="title" href="/explore/6abccdd5000000001800471b?xsec_token=ABsN9_jNWzAPdKD4L_jsZRaBrf2ZuwpAU4IpZL7WFYnVw=&amp;xsec_source=pc_user">
+          <span>近日，受台风"白海豚"影响，象山县新联会会员、茅洋乡新联会会长史英子的象山里火龙</span>
+        </a>
+        <div class="author-wrapper">
+          <a class="author" href="/user/profile/6308604100000000120013e8">
+            <img class="author-avatar" src="avatar.jpg" alt="象山发布">
+          </a>
+        </div>
+      </div>
+    </section>
+
+    <section class="note-item">
+      <a class="cover ld mask" href="/explore/6abb588c000000001400032d?xsec_token=ABncDfNU27MaDlTJyzr0Q2Bi-lmBfRn9QC-FZv7tW0-eo=&amp;xsec_source=pc_user">
+        <img class="cover-img" src="cover2.jpg" alt="寻美象山">
+      </a>
+      <div class="footer">
+        <a class="title" href="/explore/6abb588c000000001400032d?xsec_token=ABncDfNU27MaDlTJyzr0Q2Bi-lmBfRn9QC-FZv7tW0-eo=&amp;xsec_source=pc_user">
+          <span>寻美象山 寻美宁波 寻美浙江</span>
+        </a>
+        <div class="author-wrapper">
+          <a class="author" href="/user/profile/6308604100000000120013e8">
+            <img class="author-avatar" src="avatar.jpg" alt="象山发布">
+          </a>
+        </div>
+      </div>
+    </section>
+
+    <section class="note-item">
+      <a class="cover ld mask" href="/explore/6a2f40800000000018000001?xsec_token=ABoldTokenValue000000000000000000000000000=&amp;xsec_source=pc_user">
+        <img class="cover-img" src="cover3.jpg" alt="六月旧帖">
+      </a>
+      <div class="footer">
+        <a class="title" href="/explore/6a2f40800000000018000001?xsec_token=ABoldTokenValue000000000000000000000000000=&amp;xsec_source=pc_user">
+          <span>六月的旧帖子，应当在默认窗口之外</span>
+        </a>
+      </div>
+    </section>
+
+  </div>
+</div>
+</body>
+</html>
