@@ -1,0 +1,76 @@
+name: release
+
+# Publishing is pushing a tag. Nothing is uploaded by hand:
+#
+#   npm version patch --no-git-tag-version      # or edit package.json
+#   git commit -am "release v1.0.1"
+#   git push origin dev
+#   git tag v1.0.1 && git push origin v1.0.1    # <- this triggers the release
+#
+# The three console files are rebuilt from scrape.js here, verified, and attached
+# as release assets, so a release can never ship a stale split build.
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write # create the release and upload assets
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      # jsdom is a devDependency: needed to run the suite, NOT by the released
+      # files (which stay zero-dependency).
+      - name: Install dev dependencies
+        run: npm ci
+
+      - name: Tag must match package.json
+        run: |
+          set -eu
+          want="v$(node -p "require('./package.json').version")"
+          if [ "$GITHUB_REF_NAME" != "$want" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match package.json ($want) — bump the version first"
+            exit 1
+          fi
+          echo "releasing $want"
+
+      - name: Generated split files must be up to date with scrape.js
+        run: npm run build:check
+
+      - name: Test suite — golden CSVs, date parsing, build invariants
+        run: npm test
+
+      - name: Real-Chrome end-to-end (skipped if the runner has no Chrome)
+        run: |
+          set -eu
+          CHROME="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || true)"
+          if [ -z "$CHROME" ]; then
+            echo "no Chrome on this runner — skipping the browser check"
+            exit 0
+          fi
+          echo "using $CHROME"
+          CHROME="$CHROME" npm run test:browser
+
+      - name: Checksums
+        run: sha256sum scrape.js scrape-weibo.generated.js scrape-xhs.generated.js > SHA256SUMS
+
+      - name: Create the release and attach the files
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --title "xhs-weibo-scraper $GITHUB_REF_NAME" \
+            --generate-notes \
+            scrape.js \
+            scrape-weibo.generated.js \
+            scrape-xhs.generated.js \
+            SHA256SUMS

@@ -219,3 +219,7 @@ npm run check:live     # re-run the XHS scraper against the live page
 `npm run build` fails, on purpose, if `scrape.js` grows a top-level declaration the splitter
 has not been told about — add it to `BLOCKS` in `tools/build-split.js` (`both`, `weibo`,
 `xhs`, `template` or `drop`). `npm test` fails if the generated files were not rebuilt.
+
+Publishing a release: push a `v*` tag — `.github/workflows/release.yml` re-checks all of the
+above and attaches the three files to the release. Steps and download URLs are in
+`README.md` → Releasing.

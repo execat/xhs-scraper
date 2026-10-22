@@ -312,6 +312,7 @@ test/browser-check.sh     npm run test:browser — real headless Chrome end-to-e
 test/live-check.js        npm run check:live — run the scraper over the LIVE XHS page
 test/make-harness.js      dev helper: fixture + a scraper file -> runnable page
 tools/build-split.js      npm run build — scrape.js -> the two generated files
+.github/workflows/release.yml  tag push -> verify, test, publish the three files
 tools/cdp.js              drive a debug-enabled Chrome (no npm deps); see below
 tools/probe.js            naming-agnostic feed probe, run inside a page to find
                           a site's real post markup after a redesign
@@ -373,6 +374,68 @@ Notes for anyone re-running these:
 * To drive a *logged-in* Chrome for debugging, `--remote-debugging-port` is refused on the
   default profile (Chrome 136+ hardening). Launch with a `--user-data-dir` pointing at a
   copy of the profile's `Local State` + `Default/Cookies` instead.
+
+## Releasing
+
+Publishing is a tag push. `.github/workflows/release.yml` builds, tests and attaches the three
+console files, so a release can never ship a stale split build and nothing is uploaded by hand.
+
+```sh
+# 1. bump the version (no tag yet)
+npm version patch --no-git-tag-version      # 1.0.0 -> 1.0.1 (or minor / major)
+
+# 2. commit and push the bump
+git commit -am "release v$(node -p "require('./package.json').version")"
+git push origin dev
+
+# 3. tag and push the tag — this is what publishes
+git tag "v$(node -p "require('./package.json').version")"
+git push origin "v$(node -p "require('./package.json').version")"
+```
+
+The workflow then verifies the tag equals `v<package.json version>`, runs `npm ci`,
+`npm run build:check` (the committed generated files must match `scrape.js`), `npm test`, the
+real-Chrome check when the runner has Chrome, and `sha256sum`, before calling
+`gh release create --generate-notes` with:
+
+| asset | what it is |
+|---|---|
+| `scrape.js` | both sites, auto-detected |
+| `scrape-weibo.generated.js` | Weibo only |
+| `scrape-xhs.generated.js` | XHS only |
+| `SHA256SUMS` | verifier for the three (`sha256sum -c SHA256SUMS`) |
+
+Each asset also gets a permanent "latest" URL, which is the point for a locked-down laptop: no
+GitHub login, no release-page navigation.
+
+```
+https://github.com/execat/xhs-scraper/releases/latest/download/scrape.js
+https://github.com/execat/xhs-scraper/releases/latest/download/scrape-weibo.generated.js
+https://github.com/execat/xhs-scraper/releases/latest/download/scrape-xhs.generated.js
+```
+
+Release notes come from the commits since the previous tag.
+
+Notes:
+
+* Keep the assets as the individual files. A hand-made zip hides which version is inside and
+  loses the per-file `latest/download/<name>` URL; if you want a zip as well, that is what
+  Release → "Attach binaries" is for, after the workflow has run.
+* If the job fails with `Resource not accessible by integration`, the repo needs
+  Settings → Actions → General → Workflow permissions → **Read and write**. The workflow asks
+  for `contents: write`, but that repo setting can override it.
+* `npm version` would normally create the tag itself; `--no-git-tag-version` keeps the tagging
+  deliberate, after the bump is already on the remote.
+* Manual fallback from this machine (needs `brew install gh` and `gh auth login`):
+
+  ```sh
+  npm run build:check && npm test
+  sha256sum scrape.js scrape-weibo.generated.js scrape-xhs.generated.js > SHA256SUMS
+  gh release create v1.0.1 --generate-notes \
+    scrape.js scrape-weibo.generated.js scrape-xhs.generated.js SHA256SUMS
+  ```
+
+---
 
 ## Known limitations
 
