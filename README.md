@@ -365,6 +365,11 @@ Notes for anyone re-running these:
   missing from a site build. Add it to `BLOCKS` (`both` / `weibo` / `xhs` / `template` /
   `drop`).
 
+* `npm test` lists the test files explicitly (`node --test test/*.test.js`) rather than passing
+  the directory: `node --test test/` resolves differently across Node majors (on Node 22 it is
+  treated as a module path and the run dies with `Cannot find module .../test`), and a bare
+  directory run also executes the helper scripts in `test/` (`live-check.js`, `make-harness.js`)
+  as if they were tests.
 * `test/browser-check.sh`: this Chrome build does not exit after `--dump-dom` (it lingers
   on background network retries), so the script polls for a complete document and then
   kills the process rather than waiting for exit.

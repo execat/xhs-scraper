@@ -7,7 +7,7 @@
   "scripts": {
     "build": "node tools/build-split.js",
     "build:check": "node tools/build-split.js --check",
-    "test": "node --test test/",
+    "test": "node --test test/*.test.js",
     "test:browser": "bash test/browser-check.sh",
     "check:live": "node test/live-check.js"
   },
