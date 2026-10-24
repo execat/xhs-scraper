@@ -62,6 +62,7 @@ All are optional. `scrape()` with no arguments = the last 35 days, whole feed/ca
 | `maxIdle` | number — `4` | with `autoLoad` | Give up after this many scrolls in a row add nothing. |
 | `enrich` | boolean — `true` | XHS | Read the page's embedded `__INITIAL_STATE__` for titles, tokens and state timestamps. `false` = DOM only. |
 | `preferStateTitle` | boolean — `false` | XHS | Prefer the full title from the page state over the (often clipped) rendered caption. |
+| `linksOnly` | boolean — `false` | both | Emit a CSV with a single `link` column: one post URL per line, nothing else. Only the *output* narrows — `$_.rows` still carries every field, and the URLs are also in `$_.links`. |
 
 Anything unparseable in `start`/`end` throws rather than silently widening the window:
 
@@ -113,6 +114,10 @@ scrape({ start: '2026-07', end: '2026-07', preferStateTitle: true })
 
 // Either site: keep the undated leftovers (Weibo pinned posts)
 scrape({ start: '2026-07', end: '2026-07', includeUndated: true })
+
+// Either site: just the post URLs — one per line, copied to the clipboard as usual
+scrape({ start: '2026-07', end: '2026-07', linksOnly: true })
+// -> $_.links is the array; saveCsv(__xwsCsv, 'links.csv') writes the same single column
 ```
 
 ---
@@ -125,6 +130,7 @@ scrape({ start: '2026-07', end: '2026-07', includeUndated: true })
 | `$_` | the last result — **a Promise on the Weibo feed path** (the auto-run is async there), the result object otherwise. `await $_` if unsure |
 | `$_.rows` | array of row objects, newest first |
 | `$_.csv` | the CSV string |
+| `$_.links` | array of post URLs (only on a `linksOnly: true` run; `$_.linksOnly` is `true`) |
 | `$_.stats` | the counters in §6 |
 | `$_.range` | the resolved `{startMs, endMs, tz}` window |
 | `$_.mode` | `'api'` on the Weibo feed path; absent when the page was read instead |

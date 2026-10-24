@@ -89,6 +89,8 @@
 
   var COLS = ['no', 'note_id', 'posted_at_utc+08', 'posted_at_utc', 'caption', 'link',
     'link_alt', 'link_as_scraped'];
+  // scrape({ linksOnly: true }) emits this column instead of the one above.
+  var LINK_COLS = ['link'];
 
   // ---------------------------------------------------------------- selectors
   // Layered fallbacks: XHS rewrites its class names every few years, so each
@@ -422,6 +424,31 @@
     return out.join('\n');
   }
 
+  // scrape({ linksOnly: true }) collapses the CSV to a single `link` column. Only
+  // the *output* is narrowed: `rows` keeps every field, so nothing is lost.
+  function csvFor(site, rows, opts) {
+    return toCsv(opts && opts.linksOnly ? LINK_COLS : COLS, rows);
+  }
+
+  function linkList(rows) {
+    var out = [];
+    for (var i = 0; i < rows.length; i++) if (rows[i].link) out.push(rows[i].link);
+    return out;
+  }
+
+  /** Attach the output shape (csv / links) and stash the console handles. */
+  function finish(env, res, site, opts) {
+    res.csv = csvFor(site, res.rows, opts);
+    if (opts && opts.linksOnly) {
+      res.linksOnly = true;
+      res.links = linkList(res.rows);
+    }
+    try {
+      if (env.window) { env.window.__xwsCsv = res.csv; env.window.__xwsResult = res; }
+    } catch (e) { /* ignore */ }
+    return res;
+  }
+
   // -------------------------------------------------------- XHS page state
   /**
    * Summarise the note cards inside XHS's embedded state.
@@ -652,7 +679,8 @@
 
   function printResult(env, res, site) {
     var tag = TAG;
-    console.log('%c' + tag + ' ' + site + ' — ' + res.rows.length + ' rows in range ' +
+    console.log('%c' + tag + ' ' + site + (res.linksOnly ? ' [links only]' : '') + ' — ' +
+      res.rows.length + ' rows in range ' +
       fmtUtc8(res.range.startMs) + ' .. ' + fmtUtc8(res.range.endMs) + ' (UTC+8)',
       'color:#2b8a3e;font-weight:bold');
     console.log(res.csv);
@@ -747,11 +775,7 @@
     var exec = function () {
       var res = scrapeXhs(env, opts);
       res.site = 'xhs';
-      res.csv = toCsv(COLS, res.rows);
-      try {
-        if (env.window) { env.window.__xwsCsv = res.csv; env.window.__xwsResult = res; }
-      } catch (e) { /* ignore */ }
-      return printResult(env, res, 'xhs');
+      return printResult(env, finish(env, res, 'xhs', opts), 'xhs');
     };
 
     if (opts.autoLoad) {

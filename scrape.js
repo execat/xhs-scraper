@@ -25,6 +25,7 @@
  *   scrape({ days: 7 })                           // rolling window
  *   scrape({ mode: 'dom' })                       // force reading the page (Weibo)
  *   scrape({ autoLoad: true })                    // XHS: scroll to load more first
+ *   scrape({ linksOnly: true })                   // CSV with just the post URLs
  *   diagnose()                                    // which DOM hooks actually matched
  *   copy(__xwsCsv)                                // re-copy the last CSV
  *   saveCsv()                                     // download it as a .csv
@@ -91,6 +92,8 @@
       'original_posted_at', 'original_author', 'original_link', 'original_content'],
     xhs: ['no', 'note_id', 'posted_at_utc+08', 'posted_at_utc', 'caption', 'link',
       'link_alt', 'link_as_scraped'],
+    // scrape({ linksOnly: true }): one post URL per line, nothing else.
+    linkOnly: ['link'],
   };
 
   // ---------------------------------------------------------------- selectors
@@ -501,6 +504,31 @@
     return out.join('\n');
   }
 
+  // scrape({ linksOnly: true }) collapses the CSV to a single `link` column. Only
+  // the *output* is narrowed: `rows` keeps every field, so nothing is lost.
+  function csvFor(site, rows, opts) {
+    return toCsv(opts && opts.linksOnly ? COLS.linkOnly : COLS[site], rows);
+  }
+
+  function linkList(rows) {
+    var out = [];
+    for (var i = 0; i < rows.length; i++) if (rows[i].link) out.push(rows[i].link);
+    return out;
+  }
+
+  /** Attach the output shape (csv / links) and stash the console handles. */
+  function finish(env, res, site, opts) {
+    res.csv = csvFor(site, res.rows, opts);
+    if (opts && opts.linksOnly) {
+      res.linksOnly = true;
+      res.links = linkList(res.rows);
+    }
+    try {
+      if (env.window) { env.window.__xwsCsv = res.csv; env.window.__xwsResult = res; }
+    } catch (e) { /* ignore */ }
+    return res;
+  }
+
   // -------------------------------------------------------- XHS page state
   /**
    * Summarise the note cards inside XHS's embedded state.
@@ -871,7 +899,8 @@
 
   function printResult(env, res, site) {
     var tag = '[xhs-weibo-scraper]';
-    console.log('%c' + tag + ' ' + site + ' — ' + res.rows.length + ' rows in range ' +
+    console.log('%c' + tag + ' ' + site + (res.linksOnly ? ' [links only]' : '') + ' — ' +
+      res.rows.length + ' rows in range ' +
       fmtUtc8(res.range.startMs) + ' .. ' + fmtUtc8(res.range.endMs) + ' (UTC+8)',
       'color:#2b8a3e;font-weight:bold');
     console.log(res.csv);
@@ -914,11 +943,7 @@
     var exec = function () {
       var res = site === 'xhs' ? scrapeXhs(env, opts) : scrapeWeibo(env, opts);
       res.site = site;
-      res.csv = toCsv(COLS[site], res.rows);
-      try {
-        if (env.window) { env.window.__xwsCsv = res.csv; env.window.__xwsResult = res; }
-      } catch (e) { /* ignore */ }
-      return printResult(env, res, site);
+      return printResult(env, finish(env, res, site, opts), site);
     };
 
     // On weibo.com the JSON feed is the real source of truth: the rendered page
@@ -1174,11 +1199,7 @@
           };
         });
         var res = { rows: out, stats: stats, range: range, site: 'weibo', mode: 'api' };
-        res.csv = toCsv(COLS.weibo, out);
-        try {
-          if (env.window) { env.window.__xwsCsv = res.csv; env.window.__xwsResult = res; }
-        } catch (e) { /* ignore */ }
-        return printResult(env, res, 'weibo');
+        return printResult(env, finish(env, res, 'weibo', opts), 'weibo');
       });
   }
 

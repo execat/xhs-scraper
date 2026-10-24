@@ -45,6 +45,7 @@ scrape({ mode: 'dom' })                       // Weibo: read the page instead of
 scrape({ longText: false })                   // Weibo: skip the extra full-text requests
 scrape({ feature: 1 })                        // Weibo: 1 = 原创 only, 0 = everything
 scrape({ includeUndated: true })              // keep posts whose date can't be parsed
+scrape({ linksOnly: true })                   // CSV of just the post URLs, one per line
 scrape({ site: 'weibo' })                     // force the site if detection fails
 
 diagnose()          // which selectors matched, whether ids are populated, sample HTML
@@ -208,6 +209,22 @@ no,note_id,posted_at_utc+08,posted_at_utc,caption,link,link_alt,link_as_scraped
   caption are stable — key off `note_id`, not the URL.
 * `caption` is the note title as rendered on the card, which XHS may clip; pass
   `{ preferStateTitle: true }` to prefer the full title from the embedded state.
+
+### Links only
+
+`scrape({ linksOnly: true })` replaces the whole row with a single column:
+
+```
+link
+https://weibo.com/7435186337/RkvSCaGly
+https://weibo.com/7435186337/RkvMvj9eJ
+```
+
+The same CSV drives `copy()`, `saveCsv()` and `$_.csv` as usual, and the URLs are also
+returned as `$_.links`. Only the *output* is narrowed: `$_.rows` keeps every field
+(including `original_link` for Weibo reposts and `link_alt` for XHS), so nothing is lost
+and you can re-render the full CSV afterwards from `$_.rows` via the namespace handle:
+`xhsWeiboScraper.toCsv(xhsWeiboScraper.COLS.xhs, $_.rows)`.
 
 Rows are sorted newest-first and renumbered, matching `PLAN.md`'s samples.
 

@@ -85,6 +85,8 @@
 
   var COLS = ['no', 'link', 'content', 'posted_at_utc+08', 'posted_at_utc', 'is_repost',
     'original_posted_at', 'original_author', 'original_link', 'original_content'];
+  // scrape({ linksOnly: true }) emits this column instead of the one above.
+  var LINK_COLS = ['link'];
 
   // ---------------------------------------------------------------- selectors
   // Layered fallbacks: weibo rewrites its class names every few years, so each
@@ -418,6 +420,31 @@
     return out.join('\n');
   }
 
+  // scrape({ linksOnly: true }) collapses the CSV to a single `link` column. Only
+  // the *output* is narrowed: `rows` keeps every field, so nothing is lost.
+  function csvFor(site, rows, opts) {
+    return toCsv(opts && opts.linksOnly ? LINK_COLS : COLS, rows);
+  }
+
+  function linkList(rows) {
+    var out = [];
+    for (var i = 0; i < rows.length; i++) if (rows[i].link) out.push(rows[i].link);
+    return out;
+  }
+
+  /** Attach the output shape (csv / links) and stash the console handles. */
+  function finish(env, res, site, opts) {
+    res.csv = csvFor(site, res.rows, opts);
+    if (opts && opts.linksOnly) {
+      res.linksOnly = true;
+      res.links = linkList(res.rows);
+    }
+    try {
+      if (env.window) { env.window.__xwsCsv = res.csv; env.window.__xwsResult = res; }
+    } catch (e) { /* ignore */ }
+    return res;
+  }
+
   // ----------------------------------------------------------------- weibo
   /**
    * Locate the nested "original post" block of a repost.
@@ -552,7 +579,8 @@
 
   function printResult(env, res, site) {
     var tag = TAG;
-    console.log('%c' + tag + ' ' + site + ' — ' + res.rows.length + ' rows in range ' +
+    console.log('%c' + tag + ' ' + site + (res.linksOnly ? ' [links only]' : '') + ' — ' +
+      res.rows.length + ' rows in range ' +
       fmtUtc8(res.range.startMs) + ' .. ' + fmtUtc8(res.range.endMs) + ' (UTC+8)',
       'color:#2b8a3e;font-weight:bold');
     console.log(res.csv);
@@ -806,11 +834,7 @@
           };
         });
         var res = { rows: out, stats: stats, range: range, site: 'weibo', mode: 'api' };
-        res.csv = toCsv(COLS, out);
-        try {
-          if (env.window) { env.window.__xwsCsv = res.csv; env.window.__xwsResult = res; }
-        } catch (e) { /* ignore */ }
-        return printResult(env, res, 'weibo');
+        return printResult(env, finish(env, res, 'weibo', opts), 'weibo');
       });
   }
 
@@ -841,11 +865,7 @@
     var exec = function () {
       var res = scrapeWeibo(env, opts);
       res.site = 'weibo';
-      res.csv = toCsv(COLS, res.rows);
-      try {
-        if (env.window) { env.window.__xwsCsv = res.csv; env.window.__xwsResult = res; }
-      } catch (e) { /* ignore */ }
-      return printResult(env, res, 'weibo');
+      return printResult(env, finish(env, res, 'weibo', opts), 'weibo');
     };
 
     // The JSON feed is the real source of truth: the rendered page carries

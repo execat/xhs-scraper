@@ -587,3 +587,85 @@ test('run: on weibo.com it prefers the JSON feed and falls back to the page', as
   assert.equal(dom.mode, undefined);
 });
 
+// ---------------------------------------------------------------- links only
+
+test('linksOnly: the CSV keeps only the link column on the reading path', () => {
+  const { dom, env } = domEnv('weibo-profile.html', WEIBO_URL);
+  const realLog = console.log;
+  console.log = () => {};
+  let res;
+  try {
+    res = S.run(env, { mode: 'dom', linksOnly: true });
+  } finally {
+    console.log = realLog;
+  }
+  assert.equal(res.linksOnly, true);
+  assert.equal(res.csv.split('\n')[0], 'link', 'header is the single link column');
+  assert.equal(res.csv.split('\n').length, res.rows.length + 1, 'one line per post');
+  assert.deepEqual(res.links, res.rows.map((r) => r.link));
+  assert.equal(res.links[0], 'https://weibo.com/7435186337/RkvSCaGly');
+  // the rows themselves are untouched — nothing is lost by narrowing the output
+  assert.ok(res.rows[0].content.length > 0);
+  assert.equal(res.rows[0]['posted_at_utc+08'], '2026-09-30 16:54:39');
+  assert.equal(dom.window.__xwsCsv, res.csv);
+  assert.equal(dom.window.__xwsResult.links.length, res.rows.length);
+});
+
+test('linksOnly: XHS emits one canonical URL per note', () => {
+  const { env } = domEnv('xhs-profile.html', XHS_URL);
+  const realLog = console.log;
+  console.log = () => {};
+  let res;
+  try {
+    res = S.run(env, { linksOnly: true });
+  } finally {
+    console.log = realLog;
+  }
+  const N1 = '6abccdd5000000001800471b';
+  assert.equal(res.rows.length, 2);
+  assert.equal(res.csv.split('\n')[0], 'link');
+  assert.ok(res.links[0].startsWith('https://www.xiaohongshu.com/explore/' + N1 + '?xsec_token='),
+    'the canonical link, token intact — not link_alt or link_as_scraped');
+  assert.ok(!res.csv.includes('rednote.com'), 'the alt link is not in the CSV');
+  assert.ok(!res.csv.includes('note_id'), 'no other columns');
+});
+
+test('linksOnly: the weibo JSON feed path honours it too', async () => {
+  const json = (o) => Promise.resolve({ ok: true, json: () => Promise.resolve(o) });
+  const fakeFetch = (url) => {
+    if (url.startsWith('/ajax/statuses/longtext')) return json({ data: {} });
+    if (/page=1\b/.test(url)) {
+      return json({
+        data: {
+          list: [
+            { created_at: 'Wed Sep 30 16:54:39 +0800 2026', mblogid: 'RkvSCaGly', mid: 'm1',
+              text_raw: '正文', user: { idstr: '7435186337', screen_name: '寻美象山' } },
+            { created_at: 'Wed Sep 30 16:39:36 +0800 2026', mblogid: 'RkvMvj9eJ', mid: 'm2',
+              text_raw: '正文2', user: { idstr: '7435186337', screen_name: '寻美象山' } },
+          ],
+        },
+      });
+    }
+    return json({ data: { list: [] } });
+  };
+  const realLog = console.log;
+  console.log = () => {};
+  let res;
+  try {
+    res = await S.runWeiboApi(
+      { window: { fetch: fakeFetch, navigator: {} }, location: { pathname: '/u/7435186337' }, now: NOW },
+      { uid: '7435186337', start: '2026-09-30', end: '2026-09-30', linksOnly: true },
+    );
+  } finally {
+    console.log = realLog;
+  }
+  assert.equal(res.mode, 'api', 'still the feed path');
+  assert.equal(res.csv, [
+    'link',
+    'https://weibo.com/7435186337/RkvSCaGly',
+    'https://weibo.com/7435186337/RkvMvj9eJ',
+  ].join('\n'));
+  assert.deepEqual(res.links, res.rows.map((r) => r.link));
+  assert.equal(res.rows[0].is_repost, 'no', 'rows keep the full shape');
+});
+

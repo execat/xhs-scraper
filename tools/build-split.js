@@ -41,7 +41,9 @@ const SITES = {
     extraGlobals: ['weiboApiScrape'],
     csvPrefix: 'weibo-posts-',
     cols: String.raw`  var COLS = ['no', 'link', 'content', 'posted_at_utc+08', 'posted_at_utc', 'is_repost',
-    'original_posted_at', 'original_author', 'original_link', 'original_content'];`,
+    'original_posted_at', 'original_author', 'original_link', 'original_content'];
+  // scrape({ linksOnly: true }) emits this column instead of the one above.
+  var LINK_COLS = ['link'];`,
     sel: String.raw`  // ---------------------------------------------------------------- selectors
   // Layered fallbacks: weibo rewrites its class names every few years, so each
   // field is a preference-ordered list. ` + '`diagnose()`' + String.raw` reports which hit.
@@ -120,11 +122,7 @@ const SITES = {
     var exec = function () {
       var res = scrapeWeibo(env, opts);
       res.site = 'weibo';
-      res.csv = toCsv(COLS, res.rows);
-      try {
-        if (env.window) { env.window.__xwsCsv = res.csv; env.window.__xwsResult = res; }
-      } catch (e) { /* ignore */ }
-      return printResult(env, res, 'weibo');
+      return printResult(env, finish(env, res, 'weibo', opts), 'weibo');
     };
 
     // The JSON feed is the real source of truth: the rendered page carries
@@ -203,7 +201,9 @@ const SITES = {
     extraGlobals: [],
     csvPrefix: 'xhs-posts-',
     cols: String.raw`  var COLS = ['no', 'note_id', 'posted_at_utc+08', 'posted_at_utc', 'caption', 'link',
-    'link_alt', 'link_as_scraped'];`,
+    'link_alt', 'link_as_scraped'];
+  // scrape({ linksOnly: true }) emits this column instead of the one above.
+  var LINK_COLS = ['link'];`,
     sel: String.raw`  // ---------------------------------------------------------------- selectors
   // Layered fallbacks: XHS rewrites its class names every few years, so each
   // field is a preference-ordered list. ` + '`diagnose()`' + String.raw` reports which hit.
@@ -276,11 +276,7 @@ const SITES = {
     var exec = function () {
       var res = scrapeXhs(env, opts);
       res.site = 'xhs';
-      res.csv = toCsv(COLS, res.rows);
-      try {
-        if (env.window) { env.window.__xwsCsv = res.csv; env.window.__xwsResult = res; }
-      } catch (e) { /* ignore */ }
-      return printResult(env, res, 'xhs');
+      return printResult(env, finish(env, res, 'xhs', opts), 'xhs');
     };
 
     if (opts.autoLoad) {
@@ -400,6 +396,9 @@ const BLOCKS = {
   xhsAltLink: 'xhs',
   csvCell: 'both',
   toCsv: 'both',
+  csvFor: 'both', // resolves COLS.linkOnly in the combined file, LINK_COLS when split
+  linkList: 'both',
+  finish: 'both',
   inspectStateNotes: 'xhs',
   collectNoteCards: 'xhs',
   pageState: 'xhs',
@@ -440,11 +439,12 @@ const EDITS = {
     { replaceAll: { from: "'' + TAG + ", to: 'TAG + ' } },
   ],
   weibo: [
-    // COLS is a per-site array in this build, not the {weibo, xhs} map.
+    // COLS is a per-site array in this build, not the {weibo, xhs, linkOnly} map,
+    // so the two-column lookup in csvFor() cannot survive verbatim.
     {
-      block: 'runWeiboApi',
-      from: 'res.csv = toCsv(COLS.weibo, out);',
-      to: 'res.csv = toCsv(COLS, out);',
+      block: 'csvFor',
+      from: '    return toCsv(opts && opts.linksOnly ? COLS.linkOnly : COLS[site], rows);',
+      to: '    return toCsv(opts && opts.linksOnly ? LINK_COLS : COLS, rows);',
     },
     {
       block: 'autoLoad',
@@ -461,6 +461,12 @@ const EDITS = {
     },
   ],
   xhs: [
+    // Same COLS reshape as the Weibo build: one array, plus LINK_COLS.
+    {
+      block: 'csvFor',
+      from: '    return toCsv(opts && opts.linksOnly ? COLS.linkOnly : COLS[site], rows);',
+      to: '    return toCsv(opts && opts.linksOnly ? LINK_COLS : COLS, rows);',
+    },
     // The XHS build has no Weibo in it, so no Weibo-shaped names either.
     { rename: { parseWeiboTimeText: 'parseRelativeTimeText' } },
     {
