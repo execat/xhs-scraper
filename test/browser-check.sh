@@ -42,21 +42,35 @@ done
 run_page() { # url outfile profile
   # NOTE: this Chrome build does not exit after --dump-dom (it sits on
   # background network retries), so poll for a complete document and kill it.
-  rm -f "$2"
-  "$CHROME" --headless=new --disable-gpu --no-first-run --no-default-browser-check \
-    --disable-extensions --disable-background-networking --disable-component-update \
-    --disable-sync --no-pings --disable-breakpad --metrics-recording-only \
-    --user-data-dir="$3" \
-    --host-resolver-rules="MAP weibo.com 127.0.0.1:$PORT, MAP www.xiaohongshu.com 127.0.0.1:$PORT" \
-    --virtual-time-budget=6000 --dump-dom "$1" > "$2" 2>/dev/null &
-  local pid=$! i=0
-  while [ "$i" -lt 45 ]; do
-    grep -q '</html>' "$2" 2>/dev/null && break
-    kill -0 "$pid" 2>/dev/null || break
-    sleep 1; i=$((i + 1))
+  #
+  # A CI runner can also stall a launch outright — seen on GitHub's ubuntu
+  # runner where the FIRST page produced no document at all after the full 45s
+  # poll while every later page was instant (containers give Chrome a tiny
+  # /dev/shm, hence --disable-dev-shm-usage). So: try twice, and on a bad dump
+  # say so in the log instead of failing every assertion with no explanation.
+  local attempt
+  for attempt in 1 2; do
+    rm -f "$2"
+    "$CHROME" --headless=new --disable-gpu --disable-dev-shm-usage \
+      --no-first-run --no-default-browser-check \
+      --disable-extensions --disable-background-networking --disable-component-update \
+      --disable-sync --no-pings --disable-breakpad --metrics-recording-only \
+      --user-data-dir="$3-$attempt" \
+      --host-resolver-rules="MAP weibo.com 127.0.0.1:$PORT, MAP www.xiaohongshu.com 127.0.0.1:$PORT" \
+      --virtual-time-budget=6000 --dump-dom "$1" > "$2" 2>/dev/null &
+    local pid=$! i=0
+    while [ "$i" -lt 45 ]; do
+      grep -q '</html>' "$2" 2>/dev/null && break
+      kill -0 "$pid" 2>/dev/null || break
+      sleep 1; i=$((i + 1))
+    done
+    kill -9 "$pid" 2>/dev/null
+    wait "$pid" 2>/dev/null
+    grep -q '</html>' "$2" 2>/dev/null && return 0
+    printf '  RETRY %s (attempt %s produced %s bytes, no </html>)\n' \
+      "$1" "$attempt" "$(wc -c < "$2" 2>/dev/null || echo 0)"
   done
-  kill -9 "$pid" 2>/dev/null
-  wait "$pid" 2>/dev/null
+  printf '  ERROR %s never produced a document after 2 attempts\n' "$1"
   return 0
 }
 
