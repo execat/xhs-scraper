@@ -21,6 +21,7 @@
  * QUICK USE (in the console, on the profile page):
  *
  *   scrape()                                      // auto-detect site, last 35 days
+ *   scrape({ linksOnly: false })                  // the full table (paste = links only)
  *   scrape({ start: '2026-01', end: '2026-09' })  // whole months (UTC+8 boundaries)
  *   scrape({ days: 7 })                           // rolling window
  *   scrape({ mode: 'dom' })                       // force reading the page (Weibo)
@@ -65,7 +66,11 @@
 
     var out = null;
     try {
-      out = root.scrape({}); // auto-run with defaults, as PLAN.md asks
+      // Auto-run on paste. The sample run is links-only on purpose: a paste is
+      // almost always "what did this account post", and one URL per line is the
+      // usable shape for that. `scrape()` still returns the full table, and
+      // `{ linksOnly: false }` forces it explicitly.
+      out = root.scrape({ linksOnly: true });
     } catch (e) {
       console.error('[xhs-weibo-scraper] auto-run failed:', e);
     }

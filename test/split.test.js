@@ -212,6 +212,38 @@ for (const file of [WEIBO_BUILD, XHS_BUILD]) {
   });
 }
 
+// ---------------------------------------------------------------- paste run
+// Pasting a file runs it once, and that sample run is links-only. Only a real
+// eval of the browser branch can check that, so this mirrors the paste.
+test('paste: the auto-run on load prints only the links, in every file', async () => {
+  const cases = [
+    ['scrape.js', 'xhs-profile.html', XHS_URL], // XHS path is synchronous
+    [XHS_BUILD, 'xhs-profile.html', XHS_URL],
+    [WEIBO_BUILD, 'weibo-profile.html', WEIBO_URL],
+  ];
+  for (const [file, fixture, url] of cases) {
+    const html = fs.readFileSync(path.join(__dirname, 'fixtures', fixture), 'utf8');
+    const vc = new VirtualConsole(); // swallow the auto-run's console output
+    const dom = new JSDOM(html, { url, runScripts: 'outside-only', virtualConsole: vc });
+    const w = dom.window;
+    w.console = { log() {}, warn() {}, error() {} };
+    w.fetch = () => Promise.reject(new Error('no feed in this test'));
+
+    w.eval(fs.readFileSync(path.join(ROOT, file), 'utf8'));
+
+    // The weibo files reach their output through a promise chain, so settle first.
+    await new Promise((r) => setTimeout(r, 0));
+
+    const csv = String(w.__xwsCsv);
+    assert.equal(csv.split('\n')[0], 'link', `${file}: the auto-run CSV is one column`);
+    assert.ok(w.__xwsResult.linksOnly, `${file}: $_.linksOnly is set`);
+    assert.ok(csv.split('\n').length > 1, `${file}: and it has rows`);
+    // the full table is still one flag away (a promise on the weibo feed path)
+    const full = await w.scrape({ linksOnly: false });
+    assert.match(String(full.csv).split('\n')[0], /^no,/, `${file}: linksOnly:false restores the table`);
+  }
+});
+
 // ---------------------------------------------------------------- build rules
 
 test('build: the checked-in split files are up to date with scrape.js', () => {
@@ -242,7 +274,7 @@ test('build: each site build wraps a single IIFE and auto-runs', () => {
   for (const file of [WEIBO_BUILD, XHS_BUILD]) {
     const src = fs.readFileSync(path.join(ROOT, file), 'utf8');
     assert.match(src, /^\/\*![\s\S]*GENERATED FILE/, `${file}: generated header banner`);
-    assert.match(src, /out = root\.scrape\(\{\}\); \/\/ auto-run with defaults/, `${file}: auto-run`);
+    assert.match(src, /out = root\.scrape\(\{ linksOnly: true \}\); \/\/ auto-run: post URLs only/, `${file}: auto-run`);
     assert.equal(src.trimEnd().slice(-3), '});', `${file}: closes the UMD call`);
   }
 });

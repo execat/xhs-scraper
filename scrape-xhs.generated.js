@@ -61,7 +61,7 @@
 
     var out = null;
     try {
-      out = root.scrape({}); // auto-run with defaults
+      out = root.scrape({ linksOnly: true }); // auto-run: post URLs only
     } catch (e) {
       console.error('[xhs-scraper] auto-run failed:', e);
     }

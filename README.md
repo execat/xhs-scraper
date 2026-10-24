@@ -21,7 +21,8 @@ a logged-in session. That is deliberate: this is built for a restricted corporat
 3. Paste the whole contents of **`scrape.js`**, press Enter.
 
 You get the CSV printed in the console, copied to your clipboard, and available as
-`__xwsCsv`.
+`__xwsCsv`. That first run is **links only** — one post URL per line. Call `scrape()` for
+the full table (text, timestamps, repost details).
 
 On Weibo it reads the site's own JSON feed. On XHS it reads the rendered cards. Neither
 needs you to scroll.
@@ -212,7 +213,8 @@ no,note_id,posted_at_utc+08,posted_at_utc,caption,link,link_alt,link_as_scraped
 
 ### Links only
 
-`scrape({ linksOnly: true })` replaces the whole row with a single column:
+`scrape({ linksOnly: true })` replaces the whole row with a single column. It is also what
+the paste-time auto-run uses, so this is what you see first:
 
 ```
 link

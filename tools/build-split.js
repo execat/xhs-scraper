@@ -588,7 +588,8 @@ function buildSite(site, parsed) {
   parts.push('');
   parts.push('    var out = null;');
   parts.push('    try {');
-  parts.push('      out = root.scrape({}); // auto-run with defaults');
+  // Paste-time sample run: links only, matching the combined file.
+  parts.push('      out = root.scrape({ linksOnly: true }); // auto-run: post URLs only');
   parts.push('    } catch (e) {');
   parts.push("      console.error('" + cfg.tag + " auto-run failed:', e);");
   parts.push('    }');

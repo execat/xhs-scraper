@@ -31,9 +31,9 @@ paste; the per-flag tables note where a flag is site-specific.
 Chrome/Edge block the first paste with a self-XSS warning — type `allow pasting` and press
 Enter, then paste. (Once per browser profile.)
 
-Pasting **auto-runs** `scrape({})`, i.e. the last 35 days, and prints the CSV. To ask for a
-different window, just call `scrape()` again with options — the auto-run result is harmless
-and gets replaced.
+Pasting **auto-runs** `scrape({ linksOnly: true })`, i.e. the last 35 days as a one-column
+CSV of post URLs. To get the full table, call `scrape()` (or pass `{ linksOnly: false }`)
+with whatever window you want — the auto-run result is harmless and gets replaced.
 
 Better than pasting every time: DevTools → **Sources → Snippets → New snippet**, paste once,
 `Cmd+S`, then it is select-and-`Cmd+Enter` forever. Nothing is installed.
@@ -42,7 +42,8 @@ Better than pasting every time: DevTools → **Sources → Snippets → New snip
 
 ## 3. `scrape(options)` — all options
 
-All are optional. `scrape()` with no arguments = the last 35 days, whole feed/card list.
+All are optional. `scrape()` with no arguments = the last 35 days, whole feed/card list,
+full table. The paste-time auto-run is the one exception: it passes `linksOnly: true`.
 
 | option | type / default | site | what it does |
 |---|---|---|---|

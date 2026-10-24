@@ -13,8 +13,12 @@ const path = require('path');
 const fixtureName = process.argv[2];
 const outFile = process.argv[3];
 const scriptName = process.argv[4] || 'scrape.js';
+// Optional JS to run after the scraper loads. The paste-time auto-run is
+// links-only, so the browser check passes an explicit
+// `scrape({ linksOnly: false })` here to exercise the full table too.
+const extraJs = process.argv[5] || '';
 if (!fixtureName || !outFile) {
-  console.error('usage: make-harness.js <fixture-name> <out-file> [script-file]');
+  console.error('usage: make-harness.js <fixture-name> <out-file> [script-file] [extra-js]');
   process.exit(2);
 }
 
@@ -55,10 +59,11 @@ const page = [
   '</head><body>',
   m[1],
   '<script>' + src + '</script>',
+  extraJs ? '<script>' + extraJs + '</script>' : '',
   '<script>' + tail + '</script>',
   '</body></html>',
   '',
-].join('\n');
+].filter((s) => s !== '').join('\n');
 
 fs.writeFileSync(outFile, page);
 console.log('wrote ' + outFile);
