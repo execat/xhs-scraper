@@ -20,9 +20,16 @@ a logged-in session. That is deliberate: this is built for a restricted corporat
    you type `allow pasting` and press Enter — their self-XSS guard, not a problem here.
 3. Paste the whole contents of **`scrape.js`**, press Enter.
 
-You get the CSV printed in the console, copied to your clipboard, and available as
-`__xwsCsv`. That first run is **links only** — one post URL per line. Call `scrape()` for
-the full table (text, timestamps, repost details).
+Pasting only defines the API and prints a one-line ready hint — it scrapes nothing. Then
+run the call you want:
+
+```js
+scrape()                    // post URLs for the last 35 days
+scrape({ moreInfo: true })  // the full table: text, timestamps, repost details
+```
+
+The result is printed in the console as CSV, copied to your clipboard, and available as
+`__xwsCsv` / `$_.csv`.
 
 On Weibo it reads the site's own JSON feed. On XHS it reads the rendered cards. Neither
 needs you to scroll.
@@ -38,7 +45,9 @@ are built from `scrape.js` by `npm run build`. See
 ## Usage
 
 ```js
-scrape()                                      // auto-detect site, last 35 days (default)
+scrape()                                      // auto-detect site, last 35 days, post URLs
+scrape({ moreInfo: true })                     // the full table instead of just URLs
+scrape({ fields: ['link', 'posted_at_utc+08'] })  // ...or exactly the columns you want
 scrape({ start: '2026-01', end: '2026-09' })  // whole months, UTC+8 boundaries
 scrape({ start: '2026-01-15', end: '2026-03-02' })
 scrape({ days: 7 })                           // rolling window instead
@@ -46,7 +55,6 @@ scrape({ mode: 'dom' })                       // Weibo: read the page instead of
 scrape({ longText: false })                   // Weibo: skip the extra full-text requests
 scrape({ feature: 1 })                        // Weibo: 1 = 原创 only, 0 = everything
 scrape({ includeUndated: true })              // keep posts whose date can't be parsed
-scrape({ linksOnly: true })                   // CSV of just the post URLs, one per line
 scrape({ site: 'weibo' })                     // force the site if detection fails
 
 diagnose()          // which selectors matched, whether ids are populated, sample HTML
@@ -177,8 +185,26 @@ Both are covered by `npm test` (`test/split.test.js`) against the same golden ro
 
 ## Output format
 
-Both formats are byte-for-byte the ones in `PLAN.md`; the test suite asserts this for
-both the DOM path and the Weibo API path.
+Both formats are byte-for-byte the ones in `PLAN.md`; the full table is what
+`scrape({ moreInfo: true })` emits, and the test suite asserts this for both the DOM path
+and the Weibo API path.
+
+### Default: links only
+
+With no options the row is replaced by a single column, because a list of posts is
+usually what you want next:
+
+```
+link
+https://weibo.com/7435186337/RkvSCaGly
+https://weibo.com/7435186337/RkvMvj9eJ
+```
+
+`{ moreInfo: true }` gives the full table instead. Either way the same CSV drives
+`copy()`, `saveCsv()` and `$_.csv`, and the URLs are also available as `$_.links`. Only the
+*output* narrows: `$_.rows` always keeps every field (including `original_link` for Weibo
+reposts and `link_alt` for XHS), so you can re-render the full CSV from it via the
+namespace handle: `xhsWeiboScraper.toCsv(xhsWeiboScraper.COLS.xhs, $_.rows)`.
 
 ### Weibo
 
@@ -211,22 +237,22 @@ no,note_id,posted_at_utc+08,posted_at_utc,caption,link,link_alt,link_as_scraped
 * `caption` is the note title as rendered on the card, which XHS may clip; pass
   `{ preferStateTitle: true }` to prefer the full title from the embedded state.
 
-### Links only
+### Pick the columns
 
-`scrape({ linksOnly: true })` replaces the whole row with a single column. It is also what
-the paste-time auto-run uses, so this is what you see first:
+`fields: [...]` emits exactly those headings, in the order you list them:
 
-```
-link
-https://weibo.com/7435186337/RkvSCaGly
-https://weibo.com/7435186337/RkvMvj9eJ
+```js
+scrape({ fields: ['link', 'posted_at_utc+08'] })   // -> link,posted_at_utc+08
+scrape({ fields: 'link, content' })                // a comma-separated string works too
 ```
 
-The same CSV drives `copy()`, `saveCsv()` and `$_.csv` as usual, and the URLs are also
-returned as `$_.links`. Only the *output* is narrowed: `$_.rows` keeps every field
-(including `original_link` for Weibo reposts and `link_alt` for XHS), so nothing is lost
-and you can re-render the full CSV afterwards from `$_.rows` via the namespace handle:
-`xhsWeiboScraper.toCsv(xhsWeiboScraper.COLS.xhs, $_.rows)`.
+Allowed names are the full table's columns for the site you are on (`Weibo`: `no`, `link`,
+`content`, `posted_at_utc+08`, `posted_at_utc`, `is_repost`, `original_posted_at`,
+`original_author`, `original_link`, `original_content`; `XHS`: `no`, `note_id`,
+`posted_at_utc+08`, `posted_at_utc`, `caption`, `link`, `link_alt`, `link_as_scraped`).
+A name the site does not have throws — with the whole list in the message — rather than
+emitting a wrong CSV, and it throws *before* any request is made. `fields` beats
+`moreInfo`; the emitted column list is returned as `$_.fields`.
 
 Rows are sorted newest-first and renumbered, matching `PLAN.md`'s samples.
 
@@ -257,15 +283,17 @@ de-duplicated, and row 1 was `PLAN.md`'s row 1: note id `6abccdd5000000001800471
 
 ### Verified mechanically
 
-* `npm test` — 37 tests: 26 for `scrape.js`, 11 for the generated builds
+* `npm test` — 48 tests: 35 for `scrape.js`, 13 for the generated builds
   (`test/split.test.js`). Golden CSV comparisons against `PLAN.md`'s rows for **both** the
   DOM path and the Weibo API path, per file; date parsing; range boundaries incl. leap
   February; repost mapping; long-text completion; de-duplication; the pre-hydration warning;
-  the browser-vs-CommonJS wrapper branch; build freshness; and "the XHS build contains no
-  Weibo identifiers, and vice versa".
-* `npm run test:browser` — 22 checks running **each of the three files** in real headless
+  the default links-only output and `fields:`/`moreInfo:` column selection, including the
+  unknown-heading error; the browser-vs-CommonJS wrapper branch; that pasting runs nothing;
+  build freshness; and "the XHS build contains no Weibo identifiers, and vice versa".
+* `npm run test:browser` — 43 checks running **each of the three files** in real headless
   Chrome 154 from a real `weibo.com` / `www.xiaohongshu.com` origin, exercising the
-  paste-and-auto-run path (the Weibo split also gets its feed-404 → DOM fallback).
+  paste-then-`scrape()` flow: the default URLs CSV, `fields:`, the unknown-heading message,
+  and the full table (the Weibo split also gets its feed-404 → DOM fallback).
 * `npm run check:live` — re-runs the XHS scraper against the live page, so a redesign is
   one command to detect.
 

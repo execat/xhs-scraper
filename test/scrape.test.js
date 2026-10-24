@@ -402,7 +402,7 @@ test('run: auto-detects the site, prints, and exposes __xwsCsv', () => {
     assert.equal(S.detectSite(dom.window.location), 'weibo');
     // mode:'dom' keeps this test offline and synchronous; the API-default path
     // is covered separately.
-    const res = S.run(env, { mode: 'dom' });
+    const res = S.run(env, { mode: 'dom', moreInfo: true });
     assert.equal(res.site, 'weibo');
     assert.equal(res.rows.length, 3);
     assert.equal(dom.window.__xwsCsv, res.csv);
@@ -493,7 +493,7 @@ test('weibo API mode: reproduces PLAN.md rows byte for byte', async () => {
   try {
     res = await S.runWeiboApi(
       { window: { fetch: fakeFetch, navigator: {} }, location: { pathname: '/u/7435186337' }, now: NOW },
-      { uid: '7435186337', start: '2026-09-30', end: '2026-09-30' },
+      { uid: '7435186337', start: '2026-09-30', end: '2026-09-30', moreInfo: true },
     );
   } finally {
     console.log = realLog;
@@ -587,19 +587,20 @@ test('run: on weibo.com it prefers the JSON feed and falls back to the page', as
   assert.equal(dom.mode, undefined);
 });
 
-// ---------------------------------------------------------------- links only
+// ------------------------------------------------------------ default output
+// The default is one URL per line; `{ moreInfo: true }` is the full table.
 
-test('linksOnly: the CSV keeps only the link column on the reading path', () => {
+test('default output: the CSV is just the link column on the reading path', () => {
   const { dom, env } = domEnv('weibo-profile.html', WEIBO_URL);
   const realLog = console.log;
   console.log = () => {};
   let res;
   try {
-    res = S.run(env, { mode: 'dom', linksOnly: true });
+    res = S.run(env, { mode: 'dom' });
   } finally {
     console.log = realLog;
   }
-  assert.equal(res.linksOnly, true);
+  assert.equal(res.moreInfo, false);
   assert.equal(res.csv.split('\n')[0], 'link', 'header is the single link column');
   assert.equal(res.csv.split('\n').length, res.rows.length + 1, 'one line per post');
   assert.deepEqual(res.links, res.rows.map((r) => r.link));
@@ -611,13 +612,29 @@ test('linksOnly: the CSV keeps only the link column on the reading path', () => 
   assert.equal(dom.window.__xwsResult.links.length, res.rows.length);
 });
 
-test('linksOnly: XHS emits one canonical URL per note', () => {
+test('moreInfo: true restores the full table on the reading path', () => {
+  const { env } = domEnv('weibo-profile.html', WEIBO_URL);
+  const realLog = console.log;
+  console.log = () => {};
+  let res;
+  try {
+    res = S.run(env, { mode: 'dom', moreInfo: true });
+  } finally {
+    console.log = realLog;
+  }
+  assert.equal(res.moreInfo, true);
+  assert.ok(res.csv.startsWith('no,link,content,posted_at_utc+08'));
+  assert.equal(res.rows[0].content.length > 0, true);
+  assert.deepEqual(res.links, res.rows.map((r) => r.link), '$_.links works either way');
+});
+
+test('default output: XHS emits one canonical URL per note', () => {
   const { env } = domEnv('xhs-profile.html', XHS_URL);
   const realLog = console.log;
   console.log = () => {};
   let res;
   try {
-    res = S.run(env, { linksOnly: true });
+    res = S.run(env);
   } finally {
     console.log = realLog;
   }
@@ -630,7 +647,7 @@ test('linksOnly: XHS emits one canonical URL per note', () => {
   assert.ok(!res.csv.includes('note_id'), 'no other columns');
 });
 
-test('linksOnly: the weibo JSON feed path honours it too', async () => {
+test('default output: the weibo JSON feed path emits one URL per line', async () => {
   const json = (o) => Promise.resolve({ ok: true, json: () => Promise.resolve(o) });
   const fakeFetch = (url) => {
     if (url.startsWith('/ajax/statuses/longtext')) return json({ data: {} });
@@ -654,7 +671,7 @@ test('linksOnly: the weibo JSON feed path honours it too', async () => {
   try {
     res = await S.runWeiboApi(
       { window: { fetch: fakeFetch, navigator: {} }, location: { pathname: '/u/7435186337' }, now: NOW },
-      { uid: '7435186337', start: '2026-09-30', end: '2026-09-30', linksOnly: true },
+      { uid: '7435186337', start: '2026-09-30', end: '2026-09-30' },
     );
   } finally {
     console.log = realLog;
@@ -667,5 +684,88 @@ test('linksOnly: the weibo JSON feed path honours it too', async () => {
   ].join('\n'));
   assert.deepEqual(res.links, res.rows.map((r) => r.link));
   assert.equal(res.rows[0].is_repost, 'no', 'rows keep the full shape');
+});
+
+// ------------------------------------------------------------ field selection
+// `fields: [...]` picks the columns, in the order given.
+
+test('fields: an explicit selection decides which columns are emitted', () => {
+  const { dom, env } = domEnv('weibo-profile.html', WEIBO_URL);
+  const realLog = console.log;
+  console.log = () => {};
+  let res;
+  try {
+    res = S.run(env, { mode: 'dom', fields: ['posted_at_utc+08', 'link'] });
+  } finally {
+    console.log = realLog;
+  }
+  const lines = res.csv.split('\n');
+  assert.equal(lines[0], 'posted_at_utc+08,link', 'header is exactly the selection, in order');
+  assert.equal(lines.length, res.rows.length + 1, 'one line per row');
+  assert.equal(lines[1], '2026-09-30 16:54:39,https://weibo.com/7435186337/RkvSCaGly');
+  assert.deepEqual(res.fields, ['posted_at_utc+08', 'link']);
+  // still only an output change
+  assert.equal(res.rows[0].content.length > 0, true, 'rows keep every field');
+  assert.equal(dom.window.__xwsCsv, res.csv);
+});
+
+test('fields: a comma-separated string works, duplicates collapse', () => {
+  const { env } = domEnv('weibo-profile.html', WEIBO_URL);
+  const realLog = console.log;
+  console.log = () => {};
+  let res;
+  try {
+    res = S.run(env, { mode: 'dom', fields: 'content, link ,content' });
+  } finally {
+    console.log = realLog;
+  }
+  assert.equal(res.csv.split('\n')[0], 'content,link');
+});
+
+test('fields: the selection wins over moreInfo', () => {
+  const { env } = domEnv('xhs-profile.html', XHS_URL);
+  const realLog = console.log;
+  console.log = () => {};
+  let picked, full;
+  try {
+    picked = S.run(env, { fields: ['note_id', 'link'], moreInfo: true });
+    full = S.run(env, { moreInfo: true });
+  } finally {
+    console.log = realLog;
+  }
+  assert.equal(picked.csv.split('\n')[0], 'note_id,link', 'fields wins');
+  assert.ok(full.csv.startsWith('no,note_id,posted_at_utc+08'), 'moreInfo gives the table');
+  assert.equal(picked.rows.length, full.rows.length);
+});
+
+test('fields: an unknown heading throws and lists every allowed heading', () => {
+  const { env } = domEnv('weibo-profile.html', WEIBO_URL);
+  assert.throws(
+    () => S.run(env, { mode: 'dom', fields: ['link', 'posted_at'] }),
+    (e) => {
+      assert.match(e.message, /unknown heading\(s\): posted_at/);
+      // the whole menu, so the next attempt is a copy-paste
+      for (const col of ['no', 'link', 'content', 'posted_at_utc+08', 'posted_at_utc',
+        'is_repost', 'original_posted_at', 'original_author', 'original_link',
+        'original_content']) {
+        assert.ok(e.message.includes(col), `message must list ${col}`);
+      }
+      return true;
+    },
+  );
+  // the site's own headings, not the other site's
+  assert.throws(() => S.run(env, { mode: 'dom', fields: ['note_id'] }), /Allowed headings on weibo/);
+  assert.throws(() => S.run(env, { mode: 'dom', fields: [] }), /Allowed headings on weibo/);
+});
+
+test('fields: a bad heading fails before any request is made', () => {
+  let calls = 0;
+  const env = {
+    window: { fetch: () => { calls++; return Promise.reject(new Error('nope')); }, navigator: {} },
+    location: { pathname: '/u/7435186337' },
+    now: NOW,
+  };
+  assert.throws(() => S.runWeiboApi(env, { uid: '7435186337', fields: ['nope'] }), /unknown heading/);
+  assert.equal(calls, 0, 'the feed must not be touched');
 });
 

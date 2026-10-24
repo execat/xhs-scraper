@@ -112,7 +112,7 @@ test('split weibo: API mode reproduces PLAN.md rows byte for byte', async () => 
   try {
     res = await W.runWeiboApi(
       { window: { fetch: fakeFetch, navigator: {} }, location: { pathname: '/u/7435186337' }, now: NOW },
-      { uid: '7435186337', start: '2026-09-30', end: '2026-09-30' },
+      { uid: '7435186337', start: '2026-09-30', end: '2026-09-30', moreInfo: true },
     );
   } finally {
     console.log = realLog;
@@ -196,7 +196,7 @@ test('split xhs: note id encodes the post timestamp', () => {
 for (const file of [WEIBO_BUILD, XHS_BUILD]) {
   test(`split ${file}: bootstraps in the browser even when a global \`module\` exists`, () => {
     const html = fs.readFileSync(path.join(__dirname, 'fixtures', 'weibo-profile.html'), 'utf8');
-    const vc = new VirtualConsole(); // swallow the auto-run's console output
+    const vc = new VirtualConsole(); // swallow the load-time "ready" hint
     const dom = new JSDOM(html, { url: WEIBO_URL, runScripts: 'outside-only', virtualConsole: vc });
     const w = dom.window;
     w.console = { log() {}, warn() {}, error() {} };
@@ -212,18 +212,18 @@ for (const file of [WEIBO_BUILD, XHS_BUILD]) {
   });
 }
 
-// ---------------------------------------------------------------- paste run
-// Pasting a file runs it once, and that sample run is links-only. Only a real
-// eval of the browser branch can check that, so this mirrors the paste.
-test('paste: the auto-run on load prints only the links, in every file', async () => {
+// ---------------------------------------------------------------- paste
+// Pasting defines the API and runs nothing. Only a real eval of the browser
+// branch can check that, so this mirrors the paste.
+test('paste: loading a file only defines the API, and scrape() defaults to URLs', async () => {
   const cases = [
-    ['scrape.js', 'xhs-profile.html', XHS_URL], // XHS path is synchronous
+    ['scrape.js', 'xhs-profile.html', XHS_URL], // the XHS path is synchronous
     [XHS_BUILD, 'xhs-profile.html', XHS_URL],
     [WEIBO_BUILD, 'weibo-profile.html', WEIBO_URL],
   ];
   for (const [file, fixture, url] of cases) {
     const html = fs.readFileSync(path.join(__dirname, 'fixtures', fixture), 'utf8');
-    const vc = new VirtualConsole(); // swallow the auto-run's console output
+    const vc = new VirtualConsole();
     const dom = new JSDOM(html, { url, runScripts: 'outside-only', virtualConsole: vc });
     const w = dom.window;
     w.console = { log() {}, warn() {}, error() {} };
@@ -231,16 +231,46 @@ test('paste: the auto-run on load prints only the links, in every file', async (
 
     w.eval(fs.readFileSync(path.join(ROOT, file), 'utf8'));
 
-    // The weibo files reach their output through a promise chain, so settle first.
-    await new Promise((r) => setTimeout(r, 0));
+    // 1. nothing ran: no CSV, no result, nothing on the clipboard path
+    assert.equal(typeof w.scrape, 'function', `${file}: scrape() must exist`);
+    assert.equal(w.__xwsCsv, undefined, `${file}: loading must not scrape`);
+    assert.equal(w.__xwsResult, undefined, `${file}: loading must not scrape`);
 
-    const csv = String(w.__xwsCsv);
-    assert.equal(csv.split('\n')[0], 'link', `${file}: the auto-run CSV is one column`);
-    assert.ok(w.__xwsResult.linksOnly, `${file}: $_.linksOnly is set`);
+    // 2. the default run is one URL per line
+    const res = await w.scrape();
+    const csv = String(res && res.csv);
+    assert.equal(csv.split('\n')[0], 'link', `${file}: the default CSV is one column`);
     assert.ok(csv.split('\n').length > 1, `${file}: and it has rows`);
-    // the full table is still one flag away (a promise on the weibo feed path)
-    const full = await w.scrape({ linksOnly: false });
-    assert.match(String(full.csv).split('\n')[0], /^no,/, `${file}: linksOnly:false restores the table`);
+    assert.equal(res.moreInfo, false, `${file}: moreInfo is off by default`);
+    assert.deepEqual(res.links, res.rows.map((r) => r.link), `${file}: $_.links`);
+
+    // 3. and the full table is still one flag away (a promise on the weibo feed path)
+    const full = await w.scrape({ moreInfo: true });
+    assert.match(String(full.csv).split('\n')[0], /^no,/, `${file}: moreInfo restores the table`);
+  }
+});
+
+// --------------------------------------------------------- field selection
+// The generated files go through the build edits, so exercising `fields` here is
+// what proves those edits kept working (COLS is one array per site in them).
+test('split builds: fields: [...] picks columns and validates against that site', () => {
+  const realLog = console.log;
+  console.log = () => {};
+  try {
+    const { env } = domEnv('xhs-profile.html', XHS_URL);
+    const x = X.run(env, { fields: ['note_id', 'link'] });
+    assert.equal(x.csv.split('\n')[0], 'note_id,link');
+    assert.deepEqual(x.fields, ['note_id', 'link']);
+    assert.match(x.csv.split('\n')[1], /^6abccdd5000000001800471b,https:\/\/www\.xiaohongshu\.com/);
+    assert.throws(() => X.run(env, { fields: ['content'] }), /Allowed headings on xhs: no, note_id/);
+
+    const w = domEnv('weibo-profile.html', WEIBO_URL);
+    const res = W.run(w.env, { mode: 'dom', fields: ['link', 'is_repost'] });
+    assert.equal(res.csv.split('\n')[0], 'link,is_repost');
+    assert.throws(() => W.run(w.env, { mode: 'dom', fields: ['note_id'] }),
+      /Allowed headings on weibo: no, link, content/);
+  } finally {
+    console.log = realLog;
   }
 });
 
@@ -270,11 +300,12 @@ test('build: neither site build carries the other site', () => {
   }
 });
 
-test('build: each site build wraps a single IIFE and auto-runs', () => {
+test('build: each site build wraps a single IIFE and does not auto-run', () => {
   for (const file of [WEIBO_BUILD, XHS_BUILD]) {
     const src = fs.readFileSync(path.join(ROOT, file), 'utf8');
     assert.match(src, /^\/\*![\s\S]*GENERATED FILE/, `${file}: generated header banner`);
-    assert.match(src, /out = root\.scrape\(\{ linksOnly: true \}\); \/\/ auto-run: post URLs only/, `${file}: auto-run`);
+    assert.ok(!/out = root\.scrape\(/.test(src), `${file}: must not scrape on load`);
+    assert.match(src, /ready\. scrape\(\) = post URLs/, `${file}: prints the paste-time hint`);
     assert.equal(src.trimEnd().slice(-3), '});', `${file}: closes the UMD call`);
   }
 });

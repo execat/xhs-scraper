@@ -26,14 +26,21 @@ paste; the per-flag tables note where a flag is site-specific.
 1. Log in, then open the account page you want: `weibo.com/<uid>` or
    `xiaohongshu.com/user/profile/<uid>`.
 2. Open DevTools → **Console** (`Cmd/Ctrl+Shift+J`).
-3. Paste the whole file, press Enter.
+3. Paste the whole file, press Enter. That only defines the API and prints a one-line
+   ready hint — nothing is scraped yet.
 
 Chrome/Edge block the first paste with a self-XSS warning — type `allow pasting` and press
 Enter, then paste. (Once per browser profile.)
 
-Pasting **auto-runs** `scrape({ linksOnly: true })`, i.e. the last 35 days as a one-column
-CSV of post URLs. To get the full table, call `scrape()` (or pass `{ linksOnly: false }`)
-with whatever window you want — the auto-run result is harmless and gets replaced.
+Then run the call you want:
+
+```js
+scrape()                                         // last 35 days, one post URL per line
+scrape({ start: '2026-07', fields: ['link', 'posted_at_utc+08'] })
+scrape({ start: '2026-07', moreInfo: true })     // the full table
+```
+
+Each run prints the CSV, copies it to the clipboard, and replaces `$_` / `__xwsCsv`.
 
 Better than pasting every time: DevTools → **Sources → Snippets → New snippet**, paste once,
 `Cmd+S`, then it is select-and-`Cmd+Enter` forever. Nothing is installed.
@@ -43,7 +50,8 @@ Better than pasting every time: DevTools → **Sources → Snippets → New snip
 ## 3. `scrape(options)` — all options
 
 All are optional. `scrape()` with no arguments = the last 35 days, whole feed/card list,
-full table. The paste-time auto-run is the one exception: it passes `linksOnly: true`.
+as a one-column CSV of post URLs. `{ moreInfo: true }` gives the full table and
+`{ fields: [...] }` gives exactly the columns you ask for.
 
 | option | type / default | site | what it does |
 |---|---|---|---|
@@ -63,7 +71,29 @@ full table. The paste-time auto-run is the one exception: it passes `linksOnly: 
 | `maxIdle` | number — `4` | with `autoLoad` | Give up after this many scrolls in a row add nothing. |
 | `enrich` | boolean — `true` | XHS | Read the page's embedded `__INITIAL_STATE__` for titles, tokens and state timestamps. `false` = DOM only. |
 | `preferStateTitle` | boolean — `false` | XHS | Prefer the full title from the page state over the (often clipped) rendered caption. |
-| `linksOnly` | boolean — `false` | both | Emit a CSV with a single `link` column: one post URL per line, nothing else. Only the *output* narrows — `$_.rows` still carries every field, and the URLs are also in `$_.links`. |
+| `moreInfo` | boolean — `false` | both | Emit the full table (all columns below) instead of the default one-column URL list. |
+| `fields` | array of headings, or a comma-separated string — unset | both | Emit exactly these columns, in the order given: `scrape({ fields: ['link', 'posted_at_utc+08'] })` → `link,posted_at_utc+08`. Allowed headings are the full table's columns for the site; an unknown one throws and the message lists them all (see below). Beats `moreInfo`. |
+
+Only the *output* narrows with `moreInfo`/`fields`: `$_.rows` always carries every field.
+The emitted columns are returned as `$_.fields`, and the URLs as `$_.links`.
+
+Allowed `fields` headings, per site (the full table's columns):
+
+```
+weibo  no, link, content, posted_at_utc+08, posted_at_utc, is_repost,
+       original_posted_at, original_author, original_link, original_content
+xhs    no, note_id, posted_at_utc+08, posted_at_utc, caption, link, link_alt,
+       link_as_scraped
+```
+
+A heading the site does not have throws — with the whole list in the message — and it
+throws *before* any request is made, so a typo costs nothing:
+
+```
+xhs-weibo-scraper / [weibo-scraper] / [xhs-scraper]: unknown heading(s): posted_at.
+Allowed headings on weibo: no, link, content, posted_at_utc+08, posted_at_utc,
+is_repost, original_posted_at, original_author, original_link, original_content.
+```
 
 Anything unparseable in `start`/`end` throws rather than silently widening the window:
 
@@ -116,9 +146,12 @@ scrape({ start: '2026-07', end: '2026-07', preferStateTitle: true })
 // Either site: keep the undated leftovers (Weibo pinned posts)
 scrape({ start: '2026-07', end: '2026-07', includeUndated: true })
 
-// Either site: just the post URLs — one per line, copied to the clipboard as usual
-scrape({ start: '2026-07', end: '2026-07', linksOnly: true })
-// -> $_.links is the array; saveCsv(__xwsCsv, 'links.csv') writes the same single column
+// Either site: just links + dates — this is the "truncated CSV" case
+scrape({ start: '2026-07', end: '2026-07', fields: ['link', 'posted_at_utc+08'] })
+// -> header is exactly `link,posted_at_utc+08`; $_.fields echoes the selection
+
+// Either site: the full table
+scrape({ start: '2026-07', end: '2026-07', moreInfo: true })
 ```
 
 ---
@@ -128,10 +161,12 @@ scrape({ start: '2026-07', end: '2026-07', linksOnly: true })
 | call | what you get |
 |---|---|
 | `scrape(opts)` | runs it, prints the CSV, copies it, returns the result object (a Promise of it on the Weibo feed path) |
-| `$_` | the last result — **a Promise on the Weibo feed path** (the auto-run is async there), the result object otherwise. `await $_` if unsure |
+| `$_` | the last result — **a Promise on the Weibo feed path** (the feed is fetched async), the result object otherwise. `await $_` if unsure |
 | `$_.rows` | array of row objects, newest first |
 | `$_.csv` | the CSV string |
-| `$_.links` | array of post URLs (only on a `linksOnly: true` run; `$_.linksOnly` is `true`) |
+| `$_.links` | array of post URLs — one per row, whatever the output shape |
+| `$_.fields` | the column headings that were emitted (`['link']` by default) |
+| `$_.moreInfo` | `true` when the full table was emitted |
 | `$_.stats` | the counters in §6 |
 | `$_.range` | the resolved `{startMs, endMs, tz}` window |
 | `$_.mode` | `'api'` on the Weibo feed path; absent when the page was read instead |
@@ -202,6 +237,7 @@ are on the wrong page".
 | `saveCsv` does nothing | blob downloads blocked by DLP | use the clipboard routes above |
 | DevTools never opens | disabled by policy | no workaround; this cannot run there |
 | `cannot parse date …` | typo in `start`/`end` | use `2026-07`, `2026-07-01`, or `2026-07-01 09:30` |
+| `unknown heading(s): …` | `fields` names a column this site does not have | the message lists every allowed heading — copy from it. `moreInfo: true` gets the full table |
 | "the generated split files are stale" (dev only) | `scrape.js` changed | `npm run build` |
 
 Timezone note: both sites display UTC+8 and every date flag is interpreted in UTC+8. Two

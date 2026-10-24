@@ -42,8 +42,8 @@ const SITES = {
     csvPrefix: 'weibo-posts-',
     cols: String.raw`  var COLS = ['no', 'link', 'content', 'posted_at_utc+08', 'posted_at_utc', 'is_repost',
     'original_posted_at', 'original_author', 'original_link', 'original_content'];
-  // scrape({ linksOnly: true }) emits this column instead of the one above.
-  var LINK_COLS = ['link'];`,
+  // The default output: one post URL per line (scrape({ moreInfo: true }) widens it).
+  var LINKS_COLS = ['link'];`,
     sel: String.raw`  // ---------------------------------------------------------------- selectors
   // Layered fallbacks: weibo rewrites its class names every few years, so each
   // field is a preference-ordered list. ` + '`diagnose()`' + String.raw` reports which hit.
@@ -94,7 +94,8 @@ const SITES = {
  *
  * QUICK USE (in the console, on weibo.com/<uid>):
  *
- *   scrape()                                      // last 35 days
+ *   scrape()                                      // last 35 days, post URLs only
+ *   scrape({ moreInfo: true })                    // the full table instead
  *   scrape({ start: '2026-07', end: '2026-07' })  // whole months (UTC+8 boundaries)
  *   scrape({ days: 7 })                           // rolling window instead
  *   scrape({ mode: 'dom' })                       // read the page, not the feed
@@ -202,8 +203,8 @@ const SITES = {
     csvPrefix: 'xhs-posts-',
     cols: String.raw`  var COLS = ['no', 'note_id', 'posted_at_utc+08', 'posted_at_utc', 'caption', 'link',
     'link_alt', 'link_as_scraped'];
-  // scrape({ linksOnly: true }) emits this column instead of the one above.
-  var LINK_COLS = ['link'];`,
+  // The default output: one post URL per line (scrape({ moreInfo: true }) widens it).
+  var LINKS_COLS = ['link'];`,
     sel: String.raw`  // ---------------------------------------------------------------- selectors
   // Layered fallbacks: XHS rewrites its class names every few years, so each
   // field is a preference-ordered list. ` + '`diagnose()`' + String.raw` reports which hit.
@@ -244,7 +245,8 @@ const SITES = {
  *
  * QUICK USE (in the console, on the profile page, AFTER it has finished loading):
  *
- *   scrape()                                      // last 35 days
+ *   scrape()                                      // last 35 days, post URLs only
+ *   scrape({ moreInfo: true })                    // the full table instead
  *   scrape({ start: '2026-07', end: '2026-07' })  // whole months (UTC+8 boundaries)
  *   scrape({ days: 7 })                           // rolling window instead
  *   scrape({ autoLoad: true })                    // scroll to load more cards first
@@ -396,7 +398,9 @@ const BLOCKS = {
   xhsAltLink: 'xhs',
   csvCell: 'both',
   toCsv: 'both',
-  csvFor: 'both', // resolves COLS.linkOnly in the combined file, LINK_COLS when split
+  fieldNames: 'both', // returns the per-site full table; the split builds have one array
+  resolveFields: 'both',
+  columnsFor: 'both', // same: COLS[site] in the combined file, COLS when split
   linkList: 'both',
   finish: 'both',
   inspectStateNotes: 'xhs',
@@ -439,12 +443,17 @@ const EDITS = {
     { replaceAll: { from: "'' + TAG + ", to: 'TAG + ' } },
   ],
   weibo: [
-    // COLS is a per-site array in this build, not the {weibo, xhs, linkOnly} map,
-    // so the two-column lookup in csvFor() cannot survive verbatim.
+    // COLS is a per-site array in this build, not the {weibo, xhs, links} map,
+    // so the site lookups in fieldNames()/columnsFor() cannot survive verbatim.
     {
-      block: 'csvFor',
-      from: '    return toCsv(opts && opts.linksOnly ? COLS.linkOnly : COLS[site], rows);',
-      to: '    return toCsv(opts && opts.linksOnly ? LINK_COLS : COLS, rows);',
+      block: 'fieldNames',
+      from: '    return COLS[site] || [];',
+      to: '    return COLS;',
+    },
+    {
+      block: 'columnsFor',
+      from: '    return opts && opts.moreInfo ? COLS[site] : COLS.links;',
+      to: '    return opts && opts.moreInfo ? COLS : LINKS_COLS;',
     },
     {
       block: 'autoLoad',
@@ -461,11 +470,16 @@ const EDITS = {
     },
   ],
   xhs: [
-    // Same COLS reshape as the Weibo build: one array, plus LINK_COLS.
+    // Same COLS reshape as the Weibo build: one array, plus LINKS_COLS.
     {
-      block: 'csvFor',
-      from: '    return toCsv(opts && opts.linksOnly ? COLS.linkOnly : COLS[site], rows);',
-      to: '    return toCsv(opts && opts.linksOnly ? LINK_COLS : COLS, rows);',
+      block: 'fieldNames',
+      from: '    return COLS[site] || [];',
+      to: '    return COLS;',
+    },
+    {
+      block: 'columnsFor',
+      from: '    return opts && opts.moreInfo ? COLS[site] : COLS.links;',
+      to: '    return opts && opts.moreInfo ? COLS : LINKS_COLS;',
     },
     // The XHS build has no Weibo in it, so no Weibo-shaped names either.
     { rename: { parseWeiboTimeText: 'parseRelativeTimeText' } },
@@ -586,14 +600,11 @@ function buildSite(site, parsed) {
   parts.push("  if (root && typeof root.document !== 'undefined' && typeof root.window !== 'undefined') {");
   parts.push(cfg.wrapperGlobals);
   parts.push('');
-  parts.push('    var out = null;');
-  parts.push('    try {');
-  // Paste-time sample run: links only, matching the combined file.
-  parts.push('      out = root.scrape({ linksOnly: true }); // auto-run: post URLs only');
-  parts.push('    } catch (e) {');
-  parts.push("      console.error('" + cfg.tag + " auto-run failed:', e);");
-  parts.push('    }');
-  parts.push('    return out; // becomes `$_` in the DevTools console');
+  parts.push('    // Pasting only defines the API — nothing is scraped until you call scrape().');
+  parts.push("    console.log('" + cfg.tag + " ready. scrape() = post URLs for the last 35 days; ' +");
+  parts.push("      'scrape({ moreInfo: true }) = the full table; ' +");
+  parts.push("      'scrape({ fields: [...] }) = pick columns.');");
+  parts.push('    return null; // nothing scraped yet');
   parts.push('  }');
   parts.push('');
   parts.push("  if (typeof module === 'object' && module && module.exports) {");

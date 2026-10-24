@@ -20,7 +20,8 @@
  *
  * QUICK USE (in the console, on the profile page, AFTER it has finished loading):
  *
- *   scrape()                                      // last 35 days
+ *   scrape()                                      // last 35 days, post URLs only
+ *   scrape({ moreInfo: true })                    // the full table instead
  *   scrape({ start: '2026-07', end: '2026-07' })  // whole months (UTC+8 boundaries)
  *   scrape({ days: 7 })                           // rolling window instead
  *   scrape({ autoLoad: true })                    // scroll to load more cards first
@@ -59,13 +60,11 @@
     root.diagnose = function () { return api.diagnose(env()); };
     root.saveCsv = function (csv, name) { return api.saveCsv(root.document, csv, name); };
 
-    var out = null;
-    try {
-      out = root.scrape({ linksOnly: true }); // auto-run: post URLs only
-    } catch (e) {
-      console.error('[xhs-scraper] auto-run failed:', e);
-    }
-    return out; // becomes `$_` in the DevTools console
+    // Pasting only defines the API — nothing is scraped until you call scrape().
+    console.log('[xhs-scraper] ready. scrape() = post URLs for the last 35 days; ' +
+      'scrape({ moreInfo: true }) = the full table; ' +
+      'scrape({ fields: [...] }) = pick columns.');
+    return null; // nothing scraped yet
   }
 
   if (typeof module === 'object' && module && module.exports) {
@@ -89,8 +88,8 @@
 
   var COLS = ['no', 'note_id', 'posted_at_utc+08', 'posted_at_utc', 'caption', 'link',
     'link_alt', 'link_as_scraped'];
-  // scrape({ linksOnly: true }) emits this column instead of the one above.
-  var LINK_COLS = ['link'];
+  // The default output: one post URL per line (scrape({ moreInfo: true }) widens it).
+  var LINKS_COLS = ['link'];
 
   // ---------------------------------------------------------------- selectors
   // Layered fallbacks: XHS rewrites its class names every few years, so each
@@ -424,10 +423,44 @@
     return out.join('\n');
   }
 
-  // scrape({ linksOnly: true }) collapses the CSV to a single `link` column. Only
-  // the *output* is narrowed: `rows` keeps every field, so nothing is lost.
-  function csvFor(site, rows, opts) {
-    return toCsv(opts && opts.linksOnly ? LINK_COLS : COLS, rows);
+  /** The allowed `fields:` headings for a site — the full table's columns. */
+  function fieldNames(site) {
+    return COLS;
+  }
+
+  /**
+   * Resolve `opts.fields` (array or comma-separated string) to a column list.
+   *
+   * Throws on a heading the site does not have, and the message lists every
+   * allowed heading: a typo must fail loudly, not silently emit the wrong CSV
+   * (same rule as an unparseable `start`/`end`).
+   */
+  function resolveFields(site, opts) {
+    if (!opts || opts.fields == null) return null;
+    var want = typeof opts.fields === 'string' ? opts.fields.split(',') : opts.fields;
+    var allowed = fieldNames(site), picked = [], bad = [];
+    for (var i = 0; i < want.length; i++) {
+      var name = String(want[i] == null ? '' : want[i]).trim();
+      if (!name) continue;
+      if (allowed.indexOf(name) === -1) bad.push(name);
+      else if (picked.indexOf(name) === -1) picked.push(name);
+    }
+    if (bad.length) {
+      throw new Error(TAG + ' unknown heading(s): ' + bad.join(', ')
+        + '. Allowed headings on ' + site + ': ' + allowed.join(', ') + '.');
+    }
+    if (!picked.length) {
+      throw new Error(TAG + ' fields: [] selects no columns. '
+        + 'Allowed headings on ' + site + ': ' + allowed.join(', ') + '.');
+    }
+    return picked;
+  }
+
+  /** The column list for this run: `fields` wins, then moreInfo, then the URLs. */
+  function columnsFor(site, opts) {
+    var picked = resolveFields(site, opts);
+    if (picked) return picked;
+    return opts && opts.moreInfo ? COLS : LINKS_COLS;
   }
 
   function linkList(rows) {
@@ -438,11 +471,10 @@
 
   /** Attach the output shape (csv / links) and stash the console handles. */
   function finish(env, res, site, opts) {
-    res.csv = csvFor(site, res.rows, opts);
-    if (opts && opts.linksOnly) {
-      res.linksOnly = true;
-      res.links = linkList(res.rows);
-    }
+    res.moreInfo = !!(opts && opts.moreInfo);
+    res.fields = columnsFor(site, opts);
+    res.csv = toCsv(res.fields, res.rows);
+    res.links = linkList(res.rows);
     try {
       if (env.window) { env.window.__xwsCsv = res.csv; env.window.__xwsResult = res; }
     } catch (e) { /* ignore */ }
@@ -679,7 +711,12 @@
 
   function printResult(env, res, site) {
     var tag = TAG;
-    console.log('%c' + tag + ' ' + site + (res.linksOnly ? ' [links only]' : '') + ' — ' +
+    // Say which columns were emitted: the default (one URL), an explicit
+    // selection, or the full table.
+    var shape = res.moreInfo ? ''
+      : res.fields.length === 1 && res.fields[0] === 'link' ? ' [links only]'
+        : ' [fields: ' + res.fields.join(', ') + ']';
+    console.log('%c' + tag + ' ' + site + shape + ' — ' +
       res.rows.length + ' rows in range ' +
       fmtUtc8(res.range.startMs) + ' .. ' + fmtUtc8(res.range.endMs) + ' (UTC+8)',
       'color:#2b8a3e;font-weight:bold');

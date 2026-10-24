@@ -1,8 +1,12 @@
 #!/usr/bin/env bash
 #
 # Dev-only end-to-end check: run scrape.js in a real Chrome (headless) against
-# the fixtures, on a real weibo.com / xiaohongshu.com origin, and assert that the
-# auto-run-on-load path prints the CSV that PLAN.md specifies.
+# the fixtures, on a real weibo.com / xiaohongshu.com origin, and assert what the
+# console prints when you paste the file and then call scrape() yourself.
+#
+# Pasting no longer scrapes anything, so the harness runs the two calls
+# explicitly: the default (post URLs) and scrape({ moreInfo: true }) (the full
+# CSV that PLAN.md specifies).
 #
 # This is the closest thing to "paste it in the console" that can be automated.
 # It is NOT part of the deliverable: the machine you scrape from needs nothing
@@ -20,8 +24,13 @@ PORT=8137
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"; [ -n "${SERVER_PID:-}" ] && kill "$SERVER_PID" 2>/dev/null' EXIT
 
-node make-harness.js weibo-profile "$TMP/weibo.html" scrape.js 'window.__full = scrape({ linksOnly: false });' >/dev/null
-node make-harness.js xhs-profile "$TMP/xhs.html" scrape.js 'window.__full = scrape({ linksOnly: false });' >/dev/null
+BOTH='window.__links = scrape(); '
+BOTH+='window.__picked = scrape({ fields: ["link", "posted_at_utc+08"] }); '
+BOTH+='window.__full = scrape({ moreInfo: true }); '
+# The unknown-heading path must print the whole menu: catch and log it.
+BOTH+='try { scrape({ fields: ["nope"] }); } catch (e) { console.log(e.message); }'
+node make-harness.js weibo-profile "$TMP/weibo.html" scrape.js "$BOTH" >/dev/null
+node make-harness.js xhs-profile "$TMP/xhs.html" scrape.js "$BOTH" >/dev/null
 
 python3 -m http.server "$PORT" --bind 127.0.0.1 --directory "$TMP" >/dev/null 2>&1 &
 SERVER_PID=$!
@@ -75,10 +84,13 @@ norm() { sed -e 's/&amp;/\&/g' -e 's/&lt;/</g' -e 's/&gt;/>/g' -e 's/&quot;/"/g'
 echo "== real Chrome: weibo =="
 run_page "http://weibo.com/weibo.html" "$TMP/weibo.dom" "$TMP/p1"
 norm "$TMP/weibo.dom" "$TMP/weibo.txt"
-# The paste-time auto-run is links-only: one bare URL per row, no other columns.
-check 'weibo [links only] — 3 rows in range' "$TMP/weibo.txt" 'auto-run summary says links only'
-checkre '^https://weibo\.com/7435186337/RkvSCaGly([^,]|$)' "$TMP/weibo.txt" 'auto-run: row 1 is a bare URL'
-checkre '^https://weibo\.com/7435186337/RkAcbd123([^,]|$)' "$TMP/weibo.txt" 'auto-run: the repost is a bare URL too'
+# The default run is links-only: one bare URL per row, no other columns.
+check 'ready. scrape() = post URLs' "$TMP/weibo.txt" 'paste-time hint printed (nothing scraped yet)'
+check 'link,posted_at_utc+08' "$TMP/weibo.txt" 'fields: header is exactly the selection'
+check 'Allowed headings on weibo: no, link, content' "$TMP/weibo.txt" 'fields: an unknown heading lists every allowed heading'
+check 'weibo [links only] — 3 rows in range' "$TMP/weibo.txt" 'default run: summary says links only'
+checkre '^https://weibo\.com/7435186337/RkvSCaGly([^,]|$)' "$TMP/weibo.txt" 'default run: row 1 is a bare URL'
+checkre '^https://weibo\.com/7435186337/RkAcbd123([^,]|$)' "$TMP/weibo.txt" 'default run: the repost is a bare URL'
 # Then the explicit full-table run, on the same page.
 check 'no,link,content,posted_at_utc+08,posted_at_utc,is_repost,original_posted_at,original_author,original_link,original_content' "$TMP/weibo.txt" 'weibo header printed'
 check '受台风""白海豚""影响' "$TMP/weibo.txt" 'row 1 printed with PLAN.md quote-doubling'
@@ -92,9 +104,12 @@ grep -o '^1,https://weibo.com/7435186337/RkvSCaGly,.\{0,40\}' "$TMP/weibo.txt" |
 echo "== real Chrome: xhs =="
 run_page "http://www.xiaohongshu.com/xhs.html" "$TMP/xhs.dom" "$TMP/p2"
 norm "$TMP/xhs.dom" "$TMP/xhs.txt"
-# Auto-run: links only. No commas on the line proves the single column.
-check 'xhs [links only] — 2 rows in range' "$TMP/xhs.txt" 'auto-run summary says links only'
-checkre '^https://www\.xiaohongshu\.com/explore/6abccdd5000000001800471b\?xsec_token=[^,]*$' "$TMP/xhs.txt" 'auto-run: one canonical URL per row'
+# Default run: links only. No commas on the line proves the single column.
+check 'ready. scrape() = post URLs' "$TMP/xhs.txt" 'paste-time hint printed (nothing scraped yet)'
+check 'link,posted_at_utc+08' "$TMP/xhs.txt" 'fields: header is exactly the selection'
+check 'Allowed headings on xhs: no, note_id' "$TMP/xhs.txt" 'fields: an unknown heading lists every allowed heading'
+check 'xhs [links only] — 2 rows in range' "$TMP/xhs.txt" 'default run: summary says links only'
+checkre '^https://www\.xiaohongshu\.com/explore/6abccdd5000000001800471b\?xsec_token=[^,]*$' "$TMP/xhs.txt" 'default run: one canonical URL per row'
 check 'no,note_id,posted_at_utc+08,posted_at_utc,caption,link,link_alt,link_as_scraped' "$TMP/xhs.txt" 'xhs header printed'
 check '1,6abccdd5000000001800471b,2026-09-30 16:52:37,2026-09-30 08:52:37' "$TMP/xhs.txt" 'row 1 note_id + timestamps'
 check 'https://www.xiaohongshu.com/explore/6abccdd5000000001800471b?xsec_token=ABsN9_jNWzAPdKD4L_jsZRaBrf2ZuwpAU4IpZL7WFYnVw%3D&xsec_source=pc_user' "$TMP/xhs.txt" 'link (%3D encoded, as in PLAN.md)'
@@ -111,14 +126,17 @@ grep -o '^1,6abccdd5000000001800471b,[^<]*' "$TMP/xhs.txt" | head -1 | sed 's/^/
 # Same fixtures, same assertions, but each site's own file. The weibo split has
 # no feed to talk to on the harness origin (404), so this also exercises its
 # API -> DOM fallback in a real browser.
-node make-harness.js weibo-profile "$TMP/weibo-split.html" scrape-weibo.generated.js 'window.__full = scrape({ linksOnly: false });' >/dev/null
-node make-harness.js xhs-profile "$TMP/xhs-split.html" scrape-xhs.generated.js 'window.__full = scrape({ linksOnly: false });' >/dev/null
+node make-harness.js weibo-profile "$TMP/weibo-split.html" scrape-weibo.generated.js "$BOTH" >/dev/null
+node make-harness.js xhs-profile "$TMP/xhs-split.html" scrape-xhs.generated.js "$BOTH" >/dev/null
 
 echo "== real Chrome: scrape-weibo.generated.js =="
 run_page "http://weibo.com/weibo-split.html" "$TMP/weibo-split.dom" "$TMP/p3"
 norm "$TMP/weibo-split.dom" "$TMP/weibo-split.txt"
-check 'weibo [links only] — 3 rows in range' "$TMP/weibo-split.txt" 'weibo split: auto-run is links only'
-checkre '^https://weibo\.com/7435186337/RkvSCaGly([^,]|$)' "$TMP/weibo-split.txt" 'weibo split: auto-run row is a bare URL'
+check 'ready. scrape() = post URLs' "$TMP/weibo-split.txt" 'weibo split: paste-time hint printed'
+check 'link,posted_at_utc+08' "$TMP/weibo-split.txt" 'weibo split: fields header'
+check 'Allowed headings on weibo: no, link, content' "$TMP/weibo-split.txt" 'weibo split: unknown heading lists the menu'
+check 'weibo [links only] — 3 rows in range' "$TMP/weibo-split.txt" 'weibo split: default run is URLs only'
+checkre '^https://weibo\.com/7435186337/RkvSCaGly([^,]|$)' "$TMP/weibo-split.txt" 'weibo split: default run row is a bare URL'
 check 'no,link,content,posted_at_utc+08,posted_at_utc,is_repost,original_posted_at,original_author,original_link,original_content' "$TMP/weibo-split.txt" 'weibo split: header printed'
 check '受台风""白海豚""影响' "$TMP/weibo-split.txt" 'weibo split: row 1 with PLAN.md quote-doubling'
 check '2026-09-30 16:30:00,2026-09-30 08:30:00,yes,2026-09-30 14:33:20,浙江发布,https://weibo.com/1987654321/RkA000111' "$TMP/weibo-split.txt" 'weibo split: repost row with original_* filled in'
@@ -128,8 +146,11 @@ check 'undated=1' "$TMP/weibo-split.txt" 'weibo split: the pinned post was skipp
 echo "== real Chrome: scrape-xhs.generated.js =="
 run_page "http://www.xiaohongshu.com/xhs-split.html" "$TMP/xhs-split.dom" "$TMP/p4"
 norm "$TMP/xhs-split.dom" "$TMP/xhs-split.txt"
-check 'xhs [links only] — 2 rows in range' "$TMP/xhs-split.txt" 'xhs split: auto-run is links only'
-checkre '^https://www\.xiaohongshu\.com/explore/6abccdd5000000001800471b\?xsec_token=[^,]*$' "$TMP/xhs-split.txt" 'xhs split: auto-run is one canonical URL per row'
+check 'ready. scrape() = post URLs' "$TMP/xhs-split.txt" 'xhs split: paste-time hint printed'
+check 'link,posted_at_utc+08' "$TMP/xhs-split.txt" 'xhs split: fields header'
+check 'Allowed headings on xhs: no, note_id' "$TMP/xhs-split.txt" 'xhs split: unknown heading lists the menu'
+check 'xhs [links only] — 2 rows in range' "$TMP/xhs-split.txt" 'xhs split: default run is URLs only'
+checkre '^https://www\.xiaohongshu\.com/explore/6abccdd5000000001800471b\?xsec_token=[^,]*$' "$TMP/xhs-split.txt" 'xhs split: default run is one canonical URL per row'
 check 'no,note_id,posted_at_utc+08,posted_at_utc,caption,link,link_alt,link_as_scraped' "$TMP/xhs-split.txt" 'xhs split: header printed'
 check '1,6abccdd5000000001800471b,2026-09-30 16:52:37,2026-09-30 08:52:37' "$TMP/xhs-split.txt" 'xhs split: row 1 note_id + timestamps'
 check 'xhs — 2 rows in range' "$TMP/xhs-split.txt" 'xhs split: summary line'
