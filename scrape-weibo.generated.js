@@ -14,13 +14,14 @@
  *     a nested retweeted_status.
  *   - Falls back to reading the rendered page if the feed is unavailable
  *     (not logged in, endpoint changed) or returns nothing for the window.
- *   - Keeps only posts inside a date range. Default = the last 35 days.
+ *   - Keeps only posts inside a date range. Default = the current month (UTC+8).
  *   - Prints the CSV in the console and puts it on the clipboard.
  *   - It never logs in for you and never handles credentials.
  *
  * QUICK USE (in the console, on weibo.com/<uid>):
  *
- *   scrape()                                      // last 35 days, post URLs only
+ *   scrape()                                      // this month, post URLs only
+ *   scrape({ month: '2026-07' })                  // one whole month
  *   scrape({ moreInfo: true })                    // the full table instead
  *   scrape({ start: '2026-07', end: '2026-07' })  // whole months (UTC+8 boundaries)
  *   scrape({ days: 7 })                           // rolling window instead
@@ -57,7 +58,7 @@
     root.weiboApiScrape = function (opts) { return api.runWeiboApi(env(), opts); };
 
     // Pasting only defines the API — nothing is scraped until you call scrape().
-    console.log('[weibo-scraper] ready. scrape() = post URLs for the last 35 days; ' +
+    console.log('[weibo-scraper] ready. scrape() = post URLs for this month; ' +
       'scrape({ moreInfo: true }) = the full table; ' +
       'scrape({ fields: [...] }) = pick columns.');
     return null; // nothing scraped yet
@@ -73,7 +74,6 @@
 
   var CFG = {
     tzHours: 8, // Asia/Shanghai and Asia/Singapore are both UTC+8
-    defaultDays: 35,
   };
 
   var MINUTE = 60000;
@@ -365,15 +365,52 @@
     throw new Error(TAG + ': cannot parse date "' + v + '" (use 2026-09, 2026-09-30 or 2026-09-30 16:00)');
   }
 
+  /** The 'YYYY-MM' that an instant falls in, in the site's timezone. */
+  function monthOf(ms, tz) {
+    var d = new Date(ms + tz * HOUR);
+    return d.getUTCFullYear() + '-' + pad(d.getUTCMonth() + 1);
+  }
+
+  /** Validate `{ month: '2026-07' }` and normalise it to 'YYYY-MM'. */
+  function parseMonth(v) {
+    var m = /^(\d{4})-(\d{1,2})$/.exec(normText(v));
+    if (!m || +m[2] < 1 || +m[2] > 12) {
+      throw new Error(TAG + ': cannot parse month "' + v + '" (use 2026-07)');
+    }
+    return m[1] + '-' + pad(+m[2]);
+  }
+
   function parseRange(opts, nowMs) {
     opts = opts || {};
     var tz = CFG.tzHours;
+    // `month` is the whole-month shorthand — it sets both boundaries, so asking
+    // for a month *and* a start/end/days is a contradiction, not a preference.
+    if (opts.month != null) {
+      if (opts.start != null || opts.end != null || opts.days != null) {
+        throw new Error(TAG + ': month "' + opts.month
+          + '" already sets start and end — drop start/end/days');
+      }
+      var mon = parseMonth(opts.month);
+      return {
+        startMs: parseBoundary(mon, 'start', tz),
+        endMs: parseBoundary(mon, 'end', tz),
+        tz: tz, explicit: true, month: mon,
+      };
+    }
     var explicit = opts.start != null || opts.end != null;
     var startMs, endMs;
+    if (!explicit && opts.days == null) {
+      // Default window: the current month in UTC+8 — exactly { month: <now> }.
+      var cur = monthOf(nowMs, tz);
+      return {
+        startMs: parseBoundary(cur, 'start', tz),
+        endMs: parseBoundary(cur, 'end', tz),
+        tz: tz, explicit: false, month: cur,
+      };
+    }
     if (!explicit) {
-      var days = opts.days == null ? CFG.defaultDays : +opts.days;
       endMs = nowMs;
-      startMs = nowMs - days * DAY;
+      startMs = nowMs - +opts.days * DAY;
     } else {
       startMs = parseBoundary(opts.start, 'start', tz);
       endMs = parseBoundary(opts.end, 'end', tz);

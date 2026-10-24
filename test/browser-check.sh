@@ -24,9 +24,9 @@ PORT=8137
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"; [ -n "${SERVER_PID:-}" ] && kill "$SERVER_PID" 2>/dev/null' EXIT
 
-BOTH='window.__links = scrape(); '
-BOTH+='window.__picked = scrape({ fields: ["link", "posted_at_utc+08"] }); '
-BOTH+='window.__full = scrape({ moreInfo: true }); '
+BOTH='window.__links = scrape({ month: "2026-09" }); '
+BOTH+='window.__picked = scrape({ month: "2026-09", fields: ["link", "posted_at_utc+08"] }); '
+BOTH+='window.__full = scrape({ month: "2026-09", moreInfo: true }); '
 # The unknown-heading path must print the whole menu: catch and log it.
 BOTH+='try { scrape({ fields: ["nope"] }); } catch (e) { console.log(e.message); }'
 node make-harness.js weibo-profile "$TMP/weibo.html" scrape.js "$BOTH" >/dev/null
@@ -88,7 +88,7 @@ norm "$TMP/weibo.dom" "$TMP/weibo.txt"
 check 'ready. scrape() = post URLs' "$TMP/weibo.txt" 'paste-time hint printed (nothing scraped yet)'
 check 'link,posted_at_utc+08' "$TMP/weibo.txt" 'fields: header is exactly the selection'
 check 'Allowed headings on weibo: no, link, content' "$TMP/weibo.txt" 'fields: an unknown heading lists every allowed heading'
-check 'weibo [links only] — 3 rows in range' "$TMP/weibo.txt" 'default run: summary says links only'
+check 'weibo [links only] — 3 rows in range 2026-09-01 00:00:00 .. 2026-09-30 23:59:59' "$TMP/weibo.txt" 'month:2026-09 resolves to the whole of September'
 checkre '^https://weibo\.com/7435186337/RkvSCaGly([^,]|$)' "$TMP/weibo.txt" 'default run: row 1 is a bare URL'
 checkre '^https://weibo\.com/7435186337/RkAcbd123([^,]|$)' "$TMP/weibo.txt" 'default run: the repost is a bare URL'
 # Then the explicit full-table run, on the same page.
@@ -108,7 +108,7 @@ norm "$TMP/xhs.dom" "$TMP/xhs.txt"
 check 'ready. scrape() = post URLs' "$TMP/xhs.txt" 'paste-time hint printed (nothing scraped yet)'
 check 'link,posted_at_utc+08' "$TMP/xhs.txt" 'fields: header is exactly the selection'
 check 'Allowed headings on xhs: no, note_id' "$TMP/xhs.txt" 'fields: an unknown heading lists every allowed heading'
-check 'xhs [links only] — 2 rows in range' "$TMP/xhs.txt" 'default run: summary says links only'
+check 'xhs [links only] — 2 rows in range 2026-09-01 00:00:00 .. 2026-09-30 23:59:59' "$TMP/xhs.txt" 'month:2026-09 resolves to the whole of September'
 checkre '^https://www\.xiaohongshu\.com/explore/6abccdd5000000001800471b\?xsec_token=[^,]*$' "$TMP/xhs.txt" 'default run: one canonical URL per row'
 check 'no,note_id,posted_at_utc+08,posted_at_utc,caption,link,link_alt,link_as_scraped' "$TMP/xhs.txt" 'xhs header printed'
 check '1,6abccdd5000000001800471b,2026-09-30 16:52:37,2026-09-30 08:52:37' "$TMP/xhs.txt" 'row 1 note_id + timestamps'

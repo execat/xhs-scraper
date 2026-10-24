@@ -29,6 +29,8 @@ const WEIBO_BUILD = 'scrape-weibo.generated.js';
 const XHS_BUILD = 'scrape-xhs.generated.js';
 
 const NOW = Date.parse('2026-10-05T00:00:00Z');
+// Every fixture post is from September 2026, so default-window calls pin the month.
+const SEPT = { month: '2026-09' };
 const WEIBO_URL = 'https://weibo.com/7435186337';
 const XHS_URL = 'https://www.xiaohongshu.com/user/profile/6308604100000000120013e8';
 
@@ -73,7 +75,7 @@ const WEIBO_HEADER = 'no,link,content,posted_at_utc+08,posted_at_utc,is_repost,o
 
 test('split weibo: golden CSV matches PLAN.md sample rows byte for byte', () => {
   const { env } = domEnv('weibo-profile.html', WEIBO_URL);
-  const res = W.scrapeWeibo(env, {});
+  const res = W.scrapeWeibo(env, SEPT);
   const csv = W.toCsv(W.COLS, res.rows);
 
   const expected = [
@@ -136,7 +138,7 @@ test('split weibo: falls back to the page when the feed is unavailable', async (
   console.warn = () => {};
   let res;
   try {
-    res = await W.run(Object.assign({}, env, { window: Object.assign({}, env.window, { fetch: undefined }) }), {});
+    res = await W.run(Object.assign({}, env, { window: Object.assign({}, env.window, { fetch: undefined }) }), SEPT);
   } finally {
     console.log = realLog;
     console.warn = realWarn;
@@ -150,7 +152,7 @@ test('split weibo: falls back to the page when the feed is unavailable', async (
 
 test('split xhs: golden CSV matches PLAN.md sample rows byte for byte', () => {
   const { env } = domEnv('xhs-profile.html', XHS_URL);
-  const res = X.scrapeXhs(env, {});
+  const res = X.scrapeXhs(env, SEPT);
   const csv = X.toCsv(X.COLS, res.rows);
 
   const N1 = '6abccdd5000000001800471b';
@@ -179,7 +181,7 @@ test('split xhs: golden CSV matches PLAN.md sample rows byte for byte', () => {
 
 test('split xhs: warns on a pre-hydration page instead of returning a silent empty CSV', () => {
   const { env } = domEnv('xhs-profile-prehydration.html', XHS_URL);
-  const res = X.scrapeXhs(env, {});
+  const res = X.scrapeXhs(env, SEPT);
   assert.equal(res.rows.length, 0);
   assert.ok(res.cardCount > 0, 'the cards are there');
   assert.match(String(res.warning), /0 note links/);
@@ -237,7 +239,7 @@ test('paste: loading a file only defines the API, and scrape() defaults to URLs'
     assert.equal(w.__xwsResult, undefined, `${file}: loading must not scrape`);
 
     // 2. the default run is one URL per line
-    const res = await w.scrape();
+    const res = await w.scrape(SEPT);
     const csv = String(res && res.csv);
     assert.equal(csv.split('\n')[0], 'link', `${file}: the default CSV is one column`);
     assert.ok(csv.split('\n').length > 1, `${file}: and it has rows`);
@@ -245,7 +247,7 @@ test('paste: loading a file only defines the API, and scrape() defaults to URLs'
     assert.deepEqual(res.links, res.rows.map((r) => r.link), `${file}: $_.links`);
 
     // 3. and the full table is still one flag away (a promise on the weibo feed path)
-    const full = await w.scrape({ moreInfo: true });
+    const full = await w.scrape({ month: '2026-09', moreInfo: true });
     assert.match(String(full.csv).split('\n')[0], /^no,/, `${file}: moreInfo restores the table`);
   }
 });
@@ -258,14 +260,14 @@ test('split builds: fields: [...] picks columns and validates against that site'
   console.log = () => {};
   try {
     const { env } = domEnv('xhs-profile.html', XHS_URL);
-    const x = X.run(env, { fields: ['note_id', 'link'] });
+    const x = X.run(env, { month: '2026-09', fields: ['note_id', 'link'] });
     assert.equal(x.csv.split('\n')[0], 'note_id,link');
     assert.deepEqual(x.fields, ['note_id', 'link']);
     assert.match(x.csv.split('\n')[1], /^6abccdd5000000001800471b,https:\/\/www\.xiaohongshu\.com/);
     assert.throws(() => X.run(env, { fields: ['content'] }), /Allowed headings on xhs: no, note_id/);
 
     const w = domEnv('weibo-profile.html', WEIBO_URL);
-    const res = W.run(w.env, { mode: 'dom', fields: ['link', 'is_repost'] });
+    const res = W.run(w.env, { month: '2026-09', mode: 'dom', fields: ['link', 'is_repost'] });
     assert.equal(res.csv.split('\n')[0], 'link,is_repost');
     assert.throws(() => W.run(w.env, { mode: 'dom', fields: ['note_id'] }),
       /Allowed headings on weibo: no, link, content/);

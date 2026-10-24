@@ -35,9 +35,10 @@ Enter, then paste. (Once per browser profile.)
 Then run the call you want:
 
 ```js
-scrape()                                         // last 35 days, one post URL per line
-scrape({ start: '2026-07', fields: ['link', 'posted_at_utc+08'] })
-scrape({ start: '2026-07', moreInfo: true })     // the full table
+scrape()                                         // this month, one post URL per line
+scrape({ month: '2026-07' })                     // a whole calendar month
+scrape({ month: '2026-07', fields: ['link', 'posted_at_utc+08'] })
+scrape({ month: '2026-07', moreInfo: true })     // the full table
 ```
 
 Each run prints the CSV, copies it to the clipboard, and replaces `$_` / `__xwsCsv`.
@@ -49,15 +50,16 @@ Better than pasting every time: DevTools → **Sources → Snippets → New snip
 
 ## 3. `scrape(options)` — all options
 
-All are optional. `scrape()` with no arguments = the last 35 days, whole feed/card list,
-as a one-column CSV of post URLs. `{ moreInfo: true }` gives the full table and
-`{ fields: [...] }` gives exactly the columns you ask for.
+All are optional. `scrape()` with no arguments = **the current month** (UTC+8), whole
+feed/card list, as a one-column CSV of post URLs. `{ moreInfo: true }` gives the full table
+and `{ fields: [...] }` gives exactly the columns you ask for.
 
 | option | type / default | site | what it does |
 |---|---|---|---|
+| `month` | `'YYYY-MM'` string — current month (UTC+8) | both | The whole-month shorthand: sets `start` to the 1st 00:00:00.000 and `end` to that month's last day 23:59:59.999. Same as `{start: '<month>', end: '<month>'}`; combining it with `start`/`end`/`days` throws. `'2026-7'` is normalised to `'2026-07'`. |
 | `start` | string, ms, `Date` — unset | both | Start of the window. `'2026-07'`, `'2026-07-01'`, `'2026-07-01 09:30'`, or ISO. A bare date/month is read in **UTC+8**; a month means the 1st, 00:00:00.000. |
 | `end` | string, ms, `Date` — unset | both | End of the window. A bare month means the **last day** of that month, 23:59:59.999 (leap-February aware). Unset = "up to now". |
-| `days` | number — `35` | both | Rolling window ending now. Ignored as soon as `start` or `end` is given. |
+| `days` | number — unset | both | Rolling window ending now. Ignored as soon as `start` or `end` is given, and useless with `month`. |
 | `includeUndated` | boolean — `false` | both | Keep posts whose date can't be parsed instead of dropping them. Weibo pinned posts typically have no timestamp, so they appear here. |
 | `site` | `'weibo'` \| `'xhs'` — auto | `scrape.js` only | Force the site when hostname detection fails (e.g. a proxied origin). The site builds don't need it. |
 | `mode` | `'dom'` — API otherwise | Weibo | `'dom'` reads the rendered page instead of the JSON feed. Slower fidelity: minute-precision times, long posts truncated behind 展开. |
@@ -105,16 +107,19 @@ xhs-weibo-scraper / [weibo-scraper] / [xhs-scraper]: cannot parse date "july"
 ### Windows you are likely to want
 
 ```js
-scrape({ start: '2026-07', end: '2026-07' })   // all of July (1st 00:00 → 31st 23:59:59.999, UTC+8)
+scrape()                                       // this month (the default)
+scrape({ month: '2026-07' })                   // all of July (1st 00:00 → 31st 23:59:59.999, UTC+8)
+scrape({ month: '2026-07', fields: ['link', 'posted_at_utc+08'] })
 scrape({ start: '2026-07-15', end: '2026-07-15' })  // one day
 scrape({ days: 7 })                            // the last week
 scrape({ start: '2026-01' })                   // January 1st onward, up to now
 scrape({ end: '2026-06' })                     // everything up to the end of June
 ```
 
-A month boundary is snapped, not guessed: `{start:'2026-07', end:'2026-07'}` resolves to
-`2026-07-01 00:00:00 … 2026-07-31 23:59:59` in UTC+8 (`2026-06-30 16:00:00 … 2026-07-31
-15:59:59` in UTC). The resolved window is always printed with the result.
+A month boundary is snapped, not guessed: `{ month: '2026-07' }` — and the identical
+`{start:'2026-07', end:'2026-07'}` — resolves to `2026-07-01 00:00:00 … 2026-07-31
+23:59:59` in UTC+8 (`2026-06-30 16:00:00 … 2026-07-31 15:59:59` in UTC). The resolved
+window is always printed with the result, along with the month it came from.
 
 ---
 
@@ -145,6 +150,9 @@ scrape({ start: '2026-07', end: '2026-07', preferStateTitle: true })
 
 // Either site: keep the undated leftovers (Weibo pinned posts)
 scrape({ start: '2026-07', end: '2026-07', includeUndated: true })
+
+// Either site: one month, straight up
+scrape({ month: '2026-07' })
 
 // Either site: just links + dates — this is the "truncated CSV" case
 scrape({ start: '2026-07', end: '2026-07', fields: ['link', 'posted_at_utc+08'] })

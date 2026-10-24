@@ -88,13 +88,14 @@ const SITES = {
  *     a nested retweeted_status.
  *   - Falls back to reading the rendered page if the feed is unavailable
  *     (not logged in, endpoint changed) or returns nothing for the window.
- *   - Keeps only posts inside a date range. Default = the last 35 days.
+ *   - Keeps only posts inside a date range. Default = the current month (UTC+8).
  *   - Prints the CSV in the console and puts it on the clipboard.
  *   - It never logs in for you and never handles credentials.
  *
  * QUICK USE (in the console, on weibo.com/<uid>):
  *
- *   scrape()                                      // last 35 days, post URLs only
+ *   scrape()                                      // this month, post URLs only
+ *   scrape({ month: '2026-07' })                  // one whole month
  *   scrape({ moreInfo: true })                    // the full table instead
  *   scrape({ start: '2026-07', end: '2026-07' })  // whole months (UTC+8 boundaries)
  *   scrape({ days: 7 })                           // rolling window instead
@@ -240,12 +241,13 @@ const SITES = {
  *   - Post dates come from the note id, because XHS renders no dates in the DOM
  *     at all: note ids are MongoDB ObjectIds whose first 4 bytes are the
  *     creation timestamp. Falls back to the embedded page state, then the DOM.
- *   - Keeps only notes inside a date range. Default = the last 35 days.
+ *   - Keeps only notes inside a date range. Default = the current month (UTC+8).
  *   - Prints the CSV in the console and puts it on the clipboard.
  *
  * QUICK USE (in the console, on the profile page, AFTER it has finished loading):
  *
- *   scrape()                                      // last 35 days, post URLs only
+ *   scrape()                                      // this month, post URLs only
+ *   scrape({ month: '2026-07' })                  // one whole month
  *   scrape({ moreInfo: true })                    // the full table instead
  *   scrape({ start: '2026-07', end: '2026-07' })  // whole months (UTC+8 boundaries)
  *   scrape({ days: 7 })                           // rolling window instead
@@ -389,6 +391,8 @@ const BLOCKS = {
   msFromElement: 'both',
   extractMs: 'both', // xhs build drops the Weibo timestamp selector, see EDITS
   parseBoundary: 'both',
+  monthOf: 'both',
+  parseMonth: 'both',
   parseRange: 'both',
   objectIdToMs: 'xhs',
   weiboLinkInfo: 'weibo',
@@ -601,7 +605,7 @@ function buildSite(site, parsed) {
   parts.push(cfg.wrapperGlobals);
   parts.push('');
   parts.push('    // Pasting only defines the API — nothing is scraped until you call scrape().');
-  parts.push("    console.log('" + cfg.tag + " ready. scrape() = post URLs for the last 35 days; ' +");
+  parts.push("    console.log('" + cfg.tag + " ready. scrape() = post URLs for this month; ' +");
   parts.push("      'scrape({ moreInfo: true }) = the full table; ' +");
   parts.push("      'scrape({ fields: [...] }) = pick columns.');");
   parts.push('    return null; // nothing scraped yet');

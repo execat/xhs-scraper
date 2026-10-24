@@ -19,6 +19,8 @@ const { JSDOM } = require('jsdom');
 const S = require('../scrape.js');
 
 const NOW = Date.parse('2026-10-05T00:00:00Z'); // fixed "now" for deterministic ranges
+// Every fixture post is from September 2026, so default-window calls pin the month.
+const SEPT = { month: '2026-09' };
 const WEIBO_URL = 'https://weibo.com/7435186337';
 const XHS_URL = 'https://www.xiaohongshu.com/user/profile/6308604100000000120013e8';
 
@@ -76,7 +78,7 @@ const CSV_W_BASE = [
 
 test('weibo: golden CSV matches PLAN.md sample rows byte for byte', () => {
   const { env } = domEnv('weibo-profile.html', WEIBO_URL);
-  const res = S.scrapeWeibo(env, {});
+  const res = S.scrapeWeibo(env, SEPT);
 
   const expected = [
     'no,link,content,posted_at_utc+08,posted_at_utc,is_repost,original_posted_at,original_author,original_link,original_content',
@@ -102,7 +104,7 @@ test('weibo: golden CSV matches PLAN.md sample rows byte for byte', () => {
 
 test('weibo: the nested original of a repost is never emitted as its own row', () => {
   const { env } = domEnv('weibo-profile.html', WEIBO_URL);
-  const res = S.scrapeWeibo(env, {});
+  const res = S.scrapeWeibo(env, SEPT);
   const links = res.rows.map((r) => r.link);
   assert.ok(!links.includes('https://weibo.com/1987654321/RkA000111'), 'original must not be a row');
   const repost = res.rows.find((r) => r.link.endsWith('RkAcbd123'));
@@ -113,7 +115,7 @@ test('weibo: the nested original of a repost is never emitted as its own row', (
 
 test('weibo: navigation anchors are not mistaken for posts', () => {
   const { env } = domEnv('weibo-profile.html', WEIBO_URL);
-  const res = S.scrapeWeibo(env, {});
+  const res = S.scrapeWeibo(env, SEPT);
   for (const r of res.rows) {
     assert.match(r.link, /^https:\/\/weibo\.com\/\d+\/[0-9A-Za-z]+$/, `bad link ${r.link}`);
   }
@@ -134,7 +136,7 @@ test('weibo: explicit month range narrows the window', () => {
 
 test('xhs: golden CSV matches PLAN.md sample rows byte for byte', () => {
   const { env } = domEnv('xhs-profile.html', XHS_URL);
-  const res = S.scrapeXhs(env, {});
+  const res = S.scrapeXhs(env, SEPT);
   const csv = S.toCsv(S.COLS.xhs, res.rows);
 
   const N1 = '6abccdd5000000001800471b';
@@ -182,7 +184,7 @@ test('xhs: warns clearly on a real pre-hydration page instead of returning a sil
   // state is populated, but no link carries a note id and every noteCard.noteId
   // is "". The dangerous outcome here is silence, so that is what we assert on.
   const { env, dom } = domEnv('xhs-profile-prehydration.html', XHS_URL);
-  const res = S.scrapeXhs(env, {});
+  const res = S.scrapeXhs(env, SEPT);
   assert.equal(res.rows.length, 0);
   assert.equal(res.cardCount, 2, 'the cards are found');
   assert.match(res.warning || '', /note cards but 0 note links/);
@@ -192,7 +194,7 @@ test('xhs: warns clearly on a real pre-hydration page instead of returning a sil
   let warned = '';
   console.warn = (msg) => { warned += String(msg); };
   try {
-    S.run(env, {});
+    S.run(env, SEPT);
   } finally {
     console.warn = realLog;
   }
@@ -220,7 +222,7 @@ test('xhs: recovers the note id from data-note-id when the href carries none', (
     + '<span>标题一</span></a></section>'
     + '</div></body></html>';
   const dom = new JSDOM(html, { url: XHS_URL });
-  const res = S.scrapeXhs(envOf(dom), {});
+  const res = S.scrapeXhs(envOf(dom), SEPT);
 
   assert.equal(res.rows.length, 1, 'the card yields exactly one row');
   assert.equal(res.rows[0].note_id, '6abccdd5000000001800471b');
@@ -311,25 +313,46 @@ test('timing: date attributes, titles and relative text are all read', () => {
   assert.equal(S.msFromElement(d.getElementById('f'), NOW, 8), null);
 });
 
-test('timing: default range is the last 35 days, months snap to UTC+8 boundaries', () => {
+test('timing: the default window is the current month, and month: sets both ends', () => {
+  // NOW is 2026-10-05T00:00:00Z = 08:00 on the 5th in UTC+8, so "this month" is October.
   const dflt = S.parseRange({}, NOW);
-  assert.equal(dflt.endMs, NOW);
-  assert.equal(dflt.startMs, NOW - 35 * 86400000);
+  assert.equal(S.fmtUtc8(dflt.startMs), '2026-10-01 00:00:00');
+  assert.equal(S.fmtUtc8(dflt.endMs), '2026-10-31 23:59:59');
+  assert.equal(dflt.month, '2026-10', 'the resolved month is reported back');
+  assert.equal(dflt.explicit, false);
 
-  const sept = S.parseRange({ start: '2026-09', end: '2026-09' }, NOW);
-  assert.equal(S.fmtUtc8(sept.startMs), '2026-09-01 00:00:00');
-  assert.equal(S.fmtUtc8(sept.endMs), '2026-09-30 23:59:59');
+  // A month boundary that straddles the UTC+8 date line still snaps correctly.
+  const edge = Date.parse('2026-09-30T16:30:00Z'); // 2026-10-01 00:30 in UTC+8
+  assert.equal(S.fmtUtc8(S.parseRange({}, edge).startMs), '2026-10-01 00:00:00');
+
+  // { month } is exactly { start: <month>, end: <month> }
+  const jul = S.parseRange({ month: '2026-07' }, NOW);
+  assert.equal(S.fmtUtc8(jul.startMs), '2026-07-01 00:00:00');
+  assert.equal(S.fmtUtc8(jul.endMs), '2026-07-31 23:59:59');
+  assert.equal(jul.month, '2026-07');
+  assert.equal(jul.explicit, true);
+  const same = S.parseRange({ start: '2026-07', end: '2026-07' }, NOW);
+  assert.deepEqual([jul.startMs, jul.endMs], [same.startMs, same.endMs]);
+
+  // 'YYYY-M' is accepted and normalised
+  assert.equal(S.parseRange({ month: '2026-7' }, NOW).month, '2026-07');
 
   const feb = S.parseRange({ start: '2026-02', end: '2026-02' }, NOW);
   assert.equal(S.fmtUtc8(feb.endMs), '2026-02-28 23:59:59', 'leap-year aware month end');
+  assert.equal(S.fmtUtc8(S.parseRange({ month: '2028-02' }, NOW).endMs), '2028-02-29 23:59:59');
 
   const open = S.parseRange({ start: '2026-01' }, NOW);
   assert.equal(open.endMs, NOW, 'a lone start means "up to now"');
 
   const days = S.parseRange({ days: 7 }, NOW);
-  assert.equal(days.startMs, NOW - 7 * 86400000);
+  assert.equal(days.startMs, NOW - 7 * 86400000, 'days still means a rolling window');
 
   assert.throws(() => S.parseRange({ start: 'yesterday' }, NOW), /cannot parse date/);
+  assert.throws(() => S.parseRange({ month: 'july' }, NOW), /cannot parse month "july"/);
+  assert.throws(() => S.parseRange({ month: '2026-13' }, NOW), /cannot parse month/);
+  // month sets both ends, so combining it with a boundary is a contradiction
+  assert.throws(() => S.parseRange({ month: '2026-07', start: '2026-01' }, NOW), /already sets start and end/);
+  assert.throws(() => S.parseRange({ month: '2026-07', days: 7 }, NOW), /already sets start and end/);
 });
 
 // ---------------------------------------------------------------- text / csv
@@ -366,7 +389,7 @@ test('text: the fallback selector chain finds content when .WB_text is absent', 
     + '<article><div class="WB_from"><a href="//weibo.com/7435186337/RkvSCaGly" date="1790758479">x</a></div>'
     + '<p node-type="feed_list_content">现代版 weibo 的正文容器</p></article>'
     + '</body></html>', { url: WEIBO_URL });
-  const res = S.scrapeWeibo(envOf(dom), {});
+  const res = S.scrapeWeibo(envOf(dom), SEPT);
   assert.equal(res.rows.length, 1);
   assert.equal(res.rows[0].content, '现代版 weibo 的正文容器');
   assert.equal(res.rows[0]['posted_at_utc+08'], '2026-09-30 16:54:39');
@@ -385,7 +408,7 @@ test('weibo: an unrelated post link inside an item is not read as a repost origi
     + '<div class="WB_text">正文</div>'
     + '<div class="WB_feed_handle"><a href="//weibo.com/9999999999/RkOther99">查看原微博</a></div>'
     + '</div></div></body></html>', { url: WEIBO_URL });
-  const res = S.scrapeWeibo(envOf(dom), {});
+  const res = S.scrapeWeibo(envOf(dom), SEPT);
   assert.equal(res.rows.length, 1);
   assert.equal(res.rows[0].is_repost, 'no', 'must not invent a repost original');
   assert.equal(res.rows[0].content, '正文');
@@ -402,7 +425,7 @@ test('run: auto-detects the site, prints, and exposes __xwsCsv', () => {
     assert.equal(S.detectSite(dom.window.location), 'weibo');
     // mode:'dom' keeps this test offline and synchronous; the API-default path
     // is covered separately.
-    const res = S.run(env, { mode: 'dom', moreInfo: true });
+    const res = S.run(env, { month: '2026-09', mode: 'dom', moreInfo: true });
     assert.equal(res.site, 'weibo');
     assert.equal(res.rows.length, 3);
     assert.equal(dom.window.__xwsCsv, res.csv);
@@ -451,7 +474,7 @@ test('autoLoad: scrolls until the item count stops growing', async () => {
     console.log = realLog;
   }
   assert.ok(done >= 3, `expected at least 3 scroll steps, got ${done}`);
-  const res = S.scrapeWeibo(env, {});
+  const res = S.scrapeWeibo(env, SEPT);
   assert.equal(res.rows.length, 5, 'two auto-loaded items joined the three in range');
   assert.equal(res.rows[0].link, 'https://weibo.com/7435186337/RkExtra2X', 'newest first');
   assert.equal(res.rows[0].is_repost, 'no');
@@ -542,7 +565,7 @@ test('weibo API mode: pages until the window is passed, and maps reposts', async
   try {
     res = await S.runWeiboApi(
       { window: { fetch: fakeFetch, navigator: {} }, location: { pathname: '/u/7435186337' }, now: NOW },
-      { uid: '7435186337' },
+      { uid: '7435186337', month: '2026-09' },
     );
   } finally {
     console.log = realLog;
@@ -572,7 +595,7 @@ test('run: on weibo.com it prefers the JSON feed and falls back to the page', as
   console.warn = () => {};
   let res;
   try {
-    res = await S.run(Object.assign({}, env, { window: Object.assign({}, env.window, { fetch: undefined }) }), { site: 'weibo' });
+    res = await S.run(Object.assign({}, env, { window: Object.assign({}, env.window, { fetch: undefined }) }), { site: 'weibo', month: '2026-09' });
   } finally {
     console.log = realLog;
     console.warn = realWarn;
@@ -582,7 +605,7 @@ test('run: on weibo.com it prefers the JSON feed and falls back to the page', as
   assert.equal(res.rows.length, 3);
 
   // (b) explicit opt-out
-  const dom = S.run(env, { site: 'weibo', mode: 'dom' });
+  const dom = S.run(env, { site: 'weibo', mode: 'dom', month: '2026-09' });
   assert.equal(dom.rows.length, 3);
   assert.equal(dom.mode, undefined);
 });
@@ -596,7 +619,7 @@ test('default output: the CSV is just the link column on the reading path', () =
   console.log = () => {};
   let res;
   try {
-    res = S.run(env, { mode: 'dom' });
+    res = S.run(env, { month: '2026-09', mode: 'dom' });
   } finally {
     console.log = realLog;
   }
@@ -618,7 +641,7 @@ test('moreInfo: true restores the full table on the reading path', () => {
   console.log = () => {};
   let res;
   try {
-    res = S.run(env, { mode: 'dom', moreInfo: true });
+    res = S.run(env, { month: '2026-09', mode: 'dom', moreInfo: true });
   } finally {
     console.log = realLog;
   }
@@ -634,7 +657,7 @@ test('default output: XHS emits one canonical URL per note', () => {
   console.log = () => {};
   let res;
   try {
-    res = S.run(env);
+    res = S.run(env, SEPT);
   } finally {
     console.log = realLog;
   }
@@ -695,7 +718,7 @@ test('fields: an explicit selection decides which columns are emitted', () => {
   console.log = () => {};
   let res;
   try {
-    res = S.run(env, { mode: 'dom', fields: ['posted_at_utc+08', 'link'] });
+    res = S.run(env, { month: '2026-09', mode: 'dom', fields: ['posted_at_utc+08', 'link'] });
   } finally {
     console.log = realLog;
   }
@@ -715,7 +738,7 @@ test('fields: a comma-separated string works, duplicates collapse', () => {
   console.log = () => {};
   let res;
   try {
-    res = S.run(env, { mode: 'dom', fields: 'content, link ,content' });
+    res = S.run(env, { month: '2026-09', mode: 'dom', fields: 'content, link ,content' });
   } finally {
     console.log = realLog;
   }
@@ -728,8 +751,8 @@ test('fields: the selection wins over moreInfo', () => {
   console.log = () => {};
   let picked, full;
   try {
-    picked = S.run(env, { fields: ['note_id', 'link'], moreInfo: true });
-    full = S.run(env, { moreInfo: true });
+    picked = S.run(env, { month: '2026-09', fields: ['note_id', 'link'], moreInfo: true });
+    full = S.run(env, { month: '2026-09', moreInfo: true });
   } finally {
     console.log = realLog;
   }
