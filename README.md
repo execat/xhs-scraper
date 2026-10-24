@@ -24,7 +24,7 @@ Pasting only defines the API and prints a one-line ready hint — it scrapes not
 run the call you want:
 
 ```js
-scrape()                    // post URLs for this month (UTC+8)
+scrape()                    // post URLs for last month (UTC+8)
 scrape({ moreInfo: true })  // the full table: text, timestamps, repost details
 ```
 
@@ -45,7 +45,7 @@ are built from `scrape.js` by `npm run build`. See
 ## Usage
 
 ```js
-scrape()                                      // auto-detect site, this month, post URLs
+scrape()                                      // auto-detect site, last month, post URLs
 scrape({ month: '2026-07' })                   // a whole calendar month
 scrape({ moreInfo: true })                     // the full table instead of just URLs
 scrape({ fields: ['link', 'posted_at_utc+08'] })  // ...or exactly the columns you want
@@ -73,9 +73,11 @@ and `end` to the last day 23:59:59.999 of that month, in UTC+8 (leap-February aw
 exactly `{ start: '2026-07', end: '2026-07' }`, and combining it with `start`/`end`/`days`
 throws instead of guessing. `{ days: 7 }` is still there for a rolling window.
 
-**Why the current month is the default:** a monthly run is the common case, `scrape()` with
-no arguments is the shortest thing to type, and it can never land between two months. 35
-days (PLAN.md's original default) is one `{ days: 35 }` away.
+**Why the previous month is the default:** a monthly run happens *after* the month closes,
+so `scrape()` with no arguments should already be the report you want — on October 1st, and
+still on October 31st, it returns September. Want the month you are standing in? Ask for it
+(`{ month: '2026-10'`) or run it next month. 35 days (PLAN.md's original default) is one
+`{ days: 35 }` away.
 
 ---
 
@@ -292,9 +294,10 @@ de-duplicated, and row 1 was `PLAN.md`'s row 1: note id `6abccdd5000000001800471
 
 * `npm test` — 48 tests: 35 for `scrape.js`, 13 for the generated builds
   (`test/split.test.js`). Golden CSV comparisons against `PLAN.md`'s rows for **both** the
-  DOM path and the Weibo API path, per file; date parsing; the current-month default and
-  `{ month }` snapping (incl. leap February and the UTC+8 date line), and that a month
-  combined with `start`/`end`/`days` throws; range boundaries; repost mapping; long-text
+  DOM path and the Weibo API path, per file; date parsing; the previous-month default (on
+  the 1st and the last day of a month alike, plus the UTC+8 date line and the year
+  rollover) and `{ month }` snapping incl. leap February, and that a month combined with
+  `start`/`end`/`days` throws; range boundaries; repost mapping; long-text
   completion; de-duplication; the pre-hydration warning;
   the default links-only output and `fields:`/`moreInfo:` column selection, including the
   unknown-heading error; the browser-vs-CommonJS wrapper branch; that pasting runs nothing;

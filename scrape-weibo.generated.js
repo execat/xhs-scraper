@@ -14,13 +14,13 @@
  *     a nested retweeted_status.
  *   - Falls back to reading the rendered page if the feed is unavailable
  *     (not logged in, endpoint changed) or returns nothing for the window.
- *   - Keeps only posts inside a date range. Default = the current month (UTC+8).
+ *   - Keeps only posts inside a date range. Default = the previous month (UTC+8).
  *   - Prints the CSV in the console and puts it on the clipboard.
  *   - It never logs in for you and never handles credentials.
  *
  * QUICK USE (in the console, on weibo.com/<uid>):
  *
- *   scrape()                                      // this month, post URLs only
+ *   scrape()                                      // last month, post URLs only
  *   scrape({ month: '2026-07' })                  // one whole month
  *   scrape({ moreInfo: true })                    // the full table instead
  *   scrape({ start: '2026-07', end: '2026-07' })  // whole months (UTC+8 boundaries)
@@ -58,7 +58,7 @@
     root.weiboApiScrape = function (opts) { return api.runWeiboApi(env(), opts); };
 
     // Pasting only defines the API — nothing is scraped until you call scrape().
-    console.log('[weibo-scraper] ready. scrape() = post URLs for this month; ' +
+    console.log('[weibo-scraper] ready. scrape() = post URLs for last month; ' +
       'scrape({ moreInfo: true }) = the full table; ' +
       'scrape({ fields: [...] }) = pick columns.');
     return null; // nothing scraped yet
@@ -371,6 +371,13 @@
     return d.getUTCFullYear() + '-' + pad(d.getUTCMonth() + 1);
   }
 
+  /** The 'YYYY-MM' immediately before `mon` ('2026-01' -> '2025-12'). */
+  function prevMonth(mon) {
+    var y = +String(mon).slice(0, 4), m = +String(mon).slice(5, 7) - 1;
+    if (m < 1) { m = 12; y -= 1; }
+    return y + '-' + pad(m);
+  }
+
   /** Validate `{ month: '2026-07' }` and normalise it to 'YYYY-MM'. */
   function parseMonth(v) {
     var m = /^(\d{4})-(\d{1,2})$/.exec(normText(v));
@@ -400,8 +407,11 @@
     var explicit = opts.start != null || opts.end != null;
     var startMs, endMs;
     if (!explicit && opts.days == null) {
-      // Default window: the current month in UTC+8 — exactly { month: <now> }.
-      var cur = monthOf(nowMs, tz);
+      // Default window: the *previous* calendar month in UTC+8, so a monthly run
+      // after the month has closed is just `scrape()`. On any day of October —
+      // the 1st or the 31st — the default is September; ask for October with
+      // { month: '2026-10' }, or run it in November.
+      var cur = prevMonth(monthOf(nowMs, tz));
       return {
         startMs: parseBoundary(cur, 'start', tz),
         endMs: parseBoundary(cur, 'end', tz),

@@ -4,7 +4,8 @@ I want to create a JS script that fetches me all the links on the current webpag
 
 ## Given
 - An account webpage of Xiaohongshu or Weibo that is scrolled far enough that the links are on the page.
-- Start and end date, but by default it will be the current calendar month (UTC+8). Also accept a whole
+- Start and end date, but by default it will be the previous calendar month (UTC+8), so a run on any
+  day of October reports September. Also accept a whole
   month directly like `{ month: '2026-07' }`, or explicit start and end dates like 2026-01 to 2026-09.
 
 ## Do

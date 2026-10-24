@@ -35,7 +35,7 @@ Enter, then paste. (Once per browser profile.)
 Then run the call you want:
 
 ```js
-scrape()                                         // this month, one post URL per line
+scrape()                                         // last month, one post URL per line
 scrape({ month: '2026-07' })                     // a whole calendar month
 scrape({ month: '2026-07', fields: ['link', 'posted_at_utc+08'] })
 scrape({ month: '2026-07', moreInfo: true })     // the full table
@@ -50,13 +50,13 @@ Better than pasting every time: DevTools → **Sources → Snippets → New snip
 
 ## 3. `scrape(options)` — all options
 
-All are optional. `scrape()` with no arguments = **the current month** (UTC+8), whole
+All are optional. `scrape()` with no arguments = **the previous calendar month** (UTC+8), whole
 feed/card list, as a one-column CSV of post URLs. `{ moreInfo: true }` gives the full table
 and `{ fields: [...] }` gives exactly the columns you ask for.
 
 | option | type / default | site | what it does |
 |---|---|---|---|
-| `month` | `'YYYY-MM'` string — current month (UTC+8) | both | The whole-month shorthand: sets `start` to the 1st 00:00:00.000 and `end` to that month's last day 23:59:59.999. Same as `{start: '<month>', end: '<month>'}`; combining it with `start`/`end`/`days` throws. `'2026-7'` is normalised to `'2026-07'`. |
+| `month` | `'YYYY-MM'` string — the previous month (UTC+8) | both | The whole-month shorthand: sets `start` to the 1st 00:00:00.000 and `end` to that month's last day 23:59:59.999. Same as `{start: '<month>', end: '<month>'}`; combining it with `start`/`end`/`days` throws. `'2026-7'` is normalised to `'2026-07'`. |
 | `start` | string, ms, `Date` — unset | both | Start of the window. `'2026-07'`, `'2026-07-01'`, `'2026-07-01 09:30'`, or ISO. A bare date/month is read in **UTC+8**; a month means the 1st, 00:00:00.000. |
 | `end` | string, ms, `Date` — unset | both | End of the window. A bare month means the **last day** of that month, 23:59:59.999 (leap-February aware). Unset = "up to now". |
 | `days` | number — unset | both | Rolling window ending now. Ignored as soon as `start` or `end` is given, and useless with `month`. |
@@ -107,7 +107,7 @@ xhs-weibo-scraper / [weibo-scraper] / [xhs-scraper]: cannot parse date "july"
 ### Windows you are likely to want
 
 ```js
-scrape()                                       // this month (the default)
+scrape()                                       // last month (the default)
 scrape({ month: '2026-07' })                   // all of July (1st 00:00 → 31st 23:59:59.999, UTC+8)
 scrape({ month: '2026-07', fields: ['link', 'posted_at_utc+08'] })
 scrape({ start: '2026-07-15', end: '2026-07-15' })  // one day

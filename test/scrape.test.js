@@ -313,26 +313,52 @@ test('timing: date attributes, titles and relative text are all read', () => {
   assert.equal(S.msFromElement(d.getElementById('f'), NOW, 8), null);
 });
 
-test('timing: the default window is the current month, and month: sets both ends', () => {
-  // NOW is 2026-10-05T00:00:00Z = 08:00 on the 5th in UTC+8, so "this month" is October.
-  const dflt = S.parseRange({}, NOW);
-  assert.equal(S.fmtUtc8(dflt.startMs), '2026-10-01 00:00:00');
-  assert.equal(S.fmtUtc8(dflt.endMs), '2026-10-31 23:59:59');
-  assert.equal(dflt.month, '2026-10', 'the resolved month is reported back');
-  assert.equal(dflt.explicit, false);
+test('timing: the default window is the previous month, and month: sets both ends', () => {
+  // The default is the month that has just closed: on ANY day of October — the 1st
+  // and the 31st alike — scrape() reports September.
+  for (const day of ['2026-10-01T00:00:00Z', '2026-10-01T00:30:00Z', '2026-10-05T00:00:00Z',
+    '2026-10-20T12:00:00Z', '2026-10-31T15:59:00Z']) {
+    const r = S.parseRange({}, Date.parse(day));
+    assert.equal(S.fmtUtc8(r.startMs), '2026-09-01 00:00:00', day);
+    assert.equal(S.fmtUtc8(r.endMs), '2026-09-30 23:59:59', day);
+    assert.equal(r.month, '2026-09', day);
+    assert.equal(r.explicit, false, day);
+  }
 
-  // A month boundary that straddles the UTC+8 date line still snaps correctly.
-  const edge = Date.parse('2026-09-30T16:30:00Z'); // 2026-10-01 00:30 in UTC+8
-  assert.equal(S.fmtUtc8(S.parseRange({}, edge).startMs), '2026-10-01 00:00:00');
+  // The UTC+8 date line decides which month "now" is in.
+  assert.equal(S.parseRange({}, Date.parse('2026-09-30T15:59:00Z')).month, '2026-08',
+    '23:59 on Sep 30 in UTC+8 -> August was the previous month');
+  assert.equal(S.parseRange({}, Date.parse('2026-09-30T16:00:00Z')).month, '2026-09',
+    '00:00 on Oct 1 in UTC+8 -> September was the previous month');
+
+  // Year rollover: in January the previous month is the previous December.
+  const jan = S.parseRange({}, Date.parse('2026-01-01T00:00:00Z'));
+  assert.equal(jan.month, '2025-12');
+  assert.equal(S.fmtUtc8(jan.startMs), '2025-12-01 00:00:00');
+  assert.equal(S.fmtUtc8(jan.endMs), '2025-12-31 23:59:59');
+
+  // { month:'2026-09' } is exactly what the default resolves to in October.
+  const sept = S.parseRange({ month: '2026-09' }, NOW);
+  const dflt = S.parseRange({}, NOW);
+  assert.deepEqual([sept.startMs, sept.endMs], [dflt.startMs, dflt.endMs]);
+  assert.equal(sept.explicit, true);
+  assert.equal(sept.month, '2026-09');
 
   // { month } is exactly { start: <month>, end: <month> }
   const jul = S.parseRange({ month: '2026-07' }, NOW);
   assert.equal(S.fmtUtc8(jul.startMs), '2026-07-01 00:00:00');
   assert.equal(S.fmtUtc8(jul.endMs), '2026-07-31 23:59:59');
   assert.equal(jul.month, '2026-07');
-  assert.equal(jul.explicit, true);
   const same = S.parseRange({ start: '2026-07', end: '2026-07' }, NOW);
   assert.deepEqual([jul.startMs, jul.endMs], [same.startMs, same.endMs]);
+
+  // and you can ask for the current month explicitly, which is what "run it in
+  // November" would give you for free
+  const oct = S.parseRange({ month: '2026-10' }, NOW);
+  assert.equal(S.fmtUtc8(oct.startMs), '2026-10-01 00:00:00');
+  assert.equal(S.fmtUtc8(oct.endMs), '2026-10-31 23:59:59');
+  assert.equal(S.parseRange({}, Date.parse('2026-11-01T00:00:00Z')).month, '2026-10',
+    'run in November and the default is October');
 
   // 'YYYY-M' is accepted and normalised
   assert.equal(S.parseRange({ month: '2026-7' }, NOW).month, '2026-07');
