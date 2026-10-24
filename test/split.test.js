@@ -276,6 +276,44 @@ test('split builds: fields: [...] picks columns and validates against that site'
   }
 });
 
+// ------------------------------------------------------------ default window
+// The built files must agree with scrape.js about *which* month `scrape()` means:
+// the one that just closed, decided at run time.
+test('split builds: the default window is the previous month', async () => {
+  const realLog = console.log, realWarn = console.warn;
+  console.log = () => {}; console.warn = () => {};
+  try {
+    for (const [lib, fixture, url, septRows] of [
+      [W, 'weibo-profile.html', WEIBO_URL, 3],
+      [X, 'xhs-profile.html', XHS_URL, 2],
+    ]) {
+      const html = fs.readFileSync(path.join(__dirname, 'fixtures', fixture), 'utf8');
+      const at = (iso) => {
+        const dom = new JSDOM(html, { url, runScripts: 'dangerously', pretendToBeVisual: true });
+        return {
+          window: dom.window, document: dom.window.document,
+          location: dom.window.location, now: Date.parse(iso),
+        };
+      };
+      // On the first and the last day of October, the default is September.
+      for (const iso of ['2026-10-01T00:30:00Z', '2026-10-31T15:59:00Z']) {
+        const res = await lib.run(at(iso), {});
+        assert.equal(res.range.month, '2026-09', `${fixture} at ${iso}`);
+        assert.equal(res.rows.length, septRows, `${fixture} at ${iso}`);
+        assert.equal(String(res.csv).split('\n')[0], 'link', 'and the default CSV is still one column');
+      }
+      // A run in November reports October, and asking for October directly works.
+      const nov = await lib.run(at('2026-11-02T00:00:00Z'), {});
+      assert.equal(nov.range.month, '2026-10', `${fixture}: a run in November reports October`);
+      const oct = await lib.run(at('2026-10-15T00:00:00Z'), { month: '2026-10' });
+      assert.equal(oct.range.month, '2026-10', `${fixture}: { month } still overrides the default`);
+      assert.equal(oct.rows.length, 0, 'the fixtures are all September');
+    }
+  } finally {
+    console.log = realLog; console.warn = realWarn;
+  }
+});
+
 // ---------------------------------------------------------------- build rules
 
 test('build: the checked-in split files are up to date with scrape.js', () => {

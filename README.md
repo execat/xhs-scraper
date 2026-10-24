@@ -292,7 +292,7 @@ de-duplicated, and row 1 was `PLAN.md`'s row 1: note id `6abccdd5000000001800471
 
 ### Verified mechanically
 
-* `npm test` — 48 tests: 35 for `scrape.js`, 13 for the generated builds
+* `npm test` — 49 tests: 35 for `scrape.js`, 14 for the generated builds
   (`test/split.test.js`). Golden CSV comparisons against `PLAN.md`'s rows for **both** the
   DOM path and the Weibo API path, per file; date parsing; the previous-month default (on
   the 1st and the last day of a month alike, plus the UTC+8 date line and the year
@@ -300,8 +300,9 @@ de-duplicated, and row 1 was `PLAN.md`'s row 1: note id `6abccdd5000000001800471
   `start`/`end`/`days` throws; range boundaries; repost mapping; long-text
   completion; de-duplication; the pre-hydration warning;
   the default links-only output and `fields:`/`moreInfo:` column selection, including the
-  unknown-heading error; the browser-vs-CommonJS wrapper branch; that pasting runs nothing;
-  build freshness; and "the XHS build contains no Weibo identifiers, and vice versa".
+  unknown-heading error; the same previous-month default and `{ month }` override in each
+  generated file, from a pinned clock; the browser-vs-CommonJS wrapper branch; that pasting
+  runs nothing; build freshness; and "the XHS build contains no Weibo identifiers, and vice versa".
 * `npm run test:browser` — 43 checks running **each of the three files** in real headless
   Chrome 154 from a real `weibo.com` / `www.xiaohongshu.com` origin, exercising the
   paste-then-`scrape()` flow: the default URLs CSV, `fields:`, the unknown-heading message,
